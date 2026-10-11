@@ -15,8 +15,8 @@ export function ArchitectureDiagram({ className = '' }: { className?: string }) 
 
       {/* layers */}
       {[
-        { x: 16, label: 'Browser', sub: 'Next.js 14 · Vercel', color: '#4F46E5' },
-        { x: 236, label: 'Express API', sub: 'TypeScript · Replit', color: '#6366F1' },
+        { x: 16, label: 'Browser', sub: 'Next.js 14 · Vercel', color: '#059669' },
+        { x: 236, label: 'Express API', sub: 'TypeScript · Replit', color: '#10B981' },
         { x: 456, label: 'MongoDB Atlas', sub: 'Mongoose', color: '#22C55E' },
         { x: 676, label: 'Gemini API', sub: 'text · vision · embed', color: '#F59E0B' },
       ].map((b) => (

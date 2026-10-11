@@ -2,32 +2,58 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ------------------------------------------------------------------ */
+/* Cream & Mint design tokens.                                         */
+/*                                                                      */
+/* Light theme: warm cream surfaces, fresh mint accent, deep warm ink.  */
+/* Dark  theme: deep mint-charcoal surfaces, brighter mint accent.     */
+/* Triplets are kept as RGB so Tailwind can compose /alpha values.     */
+/* ------------------------------------------------------------------ */
+
 @layer base {
   :root {
-    --bg: 255 255 255;
-    --fg: 15 23 42;
-    --muted: 100 116 139;
-    --card: 255 255 255;
-    --border: 226 232 240;
-    --surface: 248 250 252;
-    --ring: 79 70 229;
+    /* surfaces */
+    --bg: 251 246 233;          /* cream-100  — page */
+    --card: 255 255 255;        /* pure white — elevated surface */
+    --surface: 245 238 216;     /* cream-200  — nested, subtle */
+    --surface-2: 237 226 194;   /* cream-300  — deeper nested */
+
+    /* lines */
+    --border: 232 223 197;      /* cream-400 */
+    --border-strong: 217 203 161; /* cream-500 */
+
+    /* text */
+    --fg: 28 25 23;             /* warm stone-900 */
+    --muted: 87 83 78;          /* warm stone-500 */
+    --soft: 168 162 158;        /* stone-400 */
+
+    /* accent */
+    --ring: 16 185 129;         /* mint-500 */
+    --ring-soft: 167 243 208;   /* mint-200 */
   }
 
   .dark {
-    --bg: 2 6 23;
-    --fg: 226 232 240;
-    --muted: 148 163 184;
-    --card: 15 23 42;
-    --border: 30 41 59;
-    --surface: 15 23 42;
-    --ring: 129 140 248;
+    --bg: 11 22 16;             /* deep mint-charcoal */
+    --card: 22 36 30;
+    --surface: 17 28 22;
+    --surface-2: 24 40 32;
+
+    --border: 31 53 43;
+    --border-strong: 47 78 65;
+
+    --fg: 245 245 240;          /* warm off-white */
+    --muted: 168 162 158;
+    --soft: 120 113 108;
+
+    --ring: 52 211 153;         /* mint-400 — brighter for contrast */
+    --ring-soft: 6 95 70;
   }
 
   html {
     scroll-behavior: smooth;
   }
 
-  /* Respect the OS reduced-motion setting everywhere, including Framer Motion. */
+  /* Respect the OS reduced-motion setting everywhere. */
   @media (prefers-reduced-motion: reduce) {
     html { scroll-behavior: auto; }
     *, *::before, *::after {
@@ -42,13 +68,33 @@
     color: rgb(var(--fg));
     font-feature-settings: 'cv11', 'ss01';
     -webkit-font-smoothing: antialiased;
+    background-image: radial-gradient(
+      ellipse 80% 50% at 50% -20%,
+      rgba(167, 243, 208, 0.35) 0%,
+      rgba(251, 246, 233, 0) 60%
+    );
+    background-attachment: fixed;
+  }
+
+  .dark body {
+    background-image: radial-gradient(
+      ellipse 80% 50% at 50% -20%,
+      rgba(6, 95, 70, 0.45) 0%,
+      rgba(11, 22, 16, 0) 60%
+    );
   }
 
   /* Visible focus ring on every interactive element (WCAG 2.4.7). */
   :focus-visible {
     outline: 2px solid rgb(var(--ring));
     outline-offset: 2px;
-    border-radius: 0.375rem;
+    border-radius: 0.5rem;
+  }
+
+  /* Selection — mint highlight. */
+  ::selection {
+    background-color: rgb(var(--ring) / 0.25);
+    color: rgb(var(--fg));
   }
 }
 
@@ -57,17 +103,29 @@
   .surface-muted { background-color: rgb(var(--surface)); }
   .border-token { border-color: rgb(var(--border)); }
   .text-muted { color: rgb(var(--muted)); }
+  .text-soft { color: rgb(var(--soft)); }
 
   .card {
     @apply rounded-2xl border border-[color:rgb(var(--border))] bg-[color:rgb(var(--card))] shadow-card;
   }
+  .card-warm {
+    @apply rounded-2xl border border-[color:rgb(var(--border))]
+           bg-cream-100 shadow-card;
+  }
+  .card-mint {
+    @apply rounded-2xl border border-brand-200 bg-brand-50 shadow-card;
+  }
 
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold
-           transition-colors disabled:cursor-not-allowed disabled:opacity-60;
+           transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-60
+           focus-visible:shadow-glow;
   }
   .btn-primary {
-    @apply btn bg-brand-600 text-white hover:bg-brand-700;
+    @apply btn bg-brand-600 text-white shadow-card hover:bg-brand-700 hover:shadow-lift active:translate-y-px;
+  }
+  .btn-mint {
+    @apply btn bg-brand-500 text-white shadow-card hover:bg-brand-600 hover:shadow-lift active:translate-y-px;
   }
   .btn-secondary {
     @apply btn border border-[color:rgb(var(--border))] bg-[color:rgb(var(--card))]
@@ -79,14 +137,21 @@
 
   .input {
     @apply w-full rounded-xl border border-[color:rgb(var(--border))] bg-[color:rgb(var(--card))]
-           px-3.5 py-2.5 text-sm placeholder:text-[color:rgb(var(--muted))]
-           focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/25;
+           px-3.5 py-2.5 text-sm placeholder:text-[color:rgb(var(--soft))]
+           transition-colors
+           focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30;
   }
 
   .label { @apply mb-1.5 block text-sm font-medium; }
 
   .chip {
     @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium;
+  }
+  .chip-mint {
+    @apply chip bg-brand-100 text-brand-800;
+  }
+  .chip-cream {
+    @apply chip bg-cream-200 text-stone-700;
   }
 
   .skeleton {
@@ -98,12 +163,12 @@
     background-image: linear-gradient(
       90deg,
       transparent,
-      rgb(var(--border) / 0.55),
+      rgb(var(--border-strong) / 0.55),
       transparent
     );
   }
 
-  /* Scroll-reveal: hidden until IntersectionObserver adds .revealed */
+  /* Scroll-reveal: hidden until IntersectionObserver adds .revealed. */
   .reveal {
     opacity: 0;
     transform: translateY(20px);
@@ -114,6 +179,7 @@
 
 @layer utilities {
   .grid-8 > * + * { margin-top: 0.5rem; }
+  .text-balance { text-wrap: balance; }
 }
 
 /* KaTeX for LaTeX in tutor answers and quiz explanations. */

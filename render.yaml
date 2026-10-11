@@ -15,7 +15,12 @@ services:
 
     # Root-level install (uses the committed package-lock.json), then compile
     # only the server workspace. The web workspace is not needed here.
-    buildCommand: npm ci && npm run build -w @studymind/server
+    #
+    # `rm -rf node_modules` first defeats Render's build cache: on a previous
+    # build with Node 26 a stale node_modules containing TypeScript 6 survived
+    # in the cache and was re-extracted, so npm ci picked up the wrong toolchain
+    # and emitted TS5108 against this tsconfig.
+    buildCommand: rm -rf node_modules && npm ci && npm run build -w @studymind/server
 
     # dist/index.js binds 0.0.0.0:$PORT, and Render injects PORT automatically.
     # Do not set PORT yourself.

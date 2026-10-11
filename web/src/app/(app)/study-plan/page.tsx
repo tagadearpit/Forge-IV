@@ -7,7 +7,7 @@ import { Button, EmptyState, ErrorState, Skeleton, useToast } from '@/components
 import { cn, formatDate } from '@/lib/utils';
 
 const KIND_STYLE: Record<string, string> = {
-  learn: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
+  learn: 'bg-brand-100 text-brand-800 dark:bg-brand-950 dark:text-brand-300',
   review: 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300',
   quiz: 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300',
 };

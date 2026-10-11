@@ -158,7 +158,7 @@ function Sparkline({ values }: { values: number[] }) {
     .join(' ');
   return (
     <svg viewBox="0 0 60 20" className="h-5 w-16" role="img" aria-label="Mastery trend">
-      <polyline points={pts} fill="none" stroke="#4F46E5" strokeWidth="1.6" strokeLinecap="round" />
+      <polyline points={pts} fill="none" stroke="#059669" strokeWidth="1.6" strokeLinecap="round" />
     </svg>
   );
 }
@@ -186,11 +186,11 @@ function HistoryPanel({ row }: { row: MasteryRow }) {
             <text x={4} y={H - PAD - g * (H - PAD * 2) + 4} fontSize="9" fill="rgb(var(--muted))">{Math.round(g*100)}%</text>
           </g>
         ))}
-        <path d={path} fill="none" stroke="#4F46E5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        <path d={path} fill="none" stroke="#059669" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
         {h.map((p, i) => {
           const x = PAD + (i / Math.max(1, h.length - 1)) * (W - PAD * 2);
           const y = H - PAD - p.pLearned * (H - PAD * 2);
-          return <circle key={i} cx={x} cy={y} r="2.5" fill="#4F46E5" />;
+          return <circle key={i} cx={x} cy={y} r="2.5" fill="#059669" />;
         })}
       </svg>
       <p className="mt-2 text-xs text-muted">

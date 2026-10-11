@@ -22,7 +22,7 @@ const ICON: Record<string, React.ComponentType<{ className?: string }>> = {
 
 const STATUS_STYLE: Record<string, string> = {
   queued: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
-  extracting: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
+  extracting: 'bg-brand-100 text-brand-800 dark:bg-brand-950 dark:text-brand-300',
   indexing: 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300',
   ready: 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300',
   failed: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
