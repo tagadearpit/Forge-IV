@@ -1,5 +1,5 @@
 import rateLimit from 'express-rate-limit';
-import { env } from '../config/env';
+import { env } from '../config/env.js';
 
 const json = (code: string, message: string) => ({ error: { code, message } });
 

@@ -3,7 +3,7 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import JSZip from 'jszip';
-import { splitSentences } from '../utils/text';
+import { splitSentences } from '../utils/text.js';
 
 const exec = promisify(execFile);
 

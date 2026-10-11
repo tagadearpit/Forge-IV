@@ -1,6 +1,6 @@
-import { env } from '../config/env';
-import { localEmbed, localEmbedBatch, EMBEDDING_DIM } from '../utils/embedding';
-import { contentWords, splitSentences } from '../utils/text';
+import { env } from '../config/env.js';
+import { localEmbed, localEmbedBatch, EMBEDDING_DIM } from '../utils/embedding.js';
+import { contentWords, splitSentences } from '../utils/text.js';
 
 /**
  * ============================================================================

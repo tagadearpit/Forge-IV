@@ -1,15 +1,15 @@
-import { Question } from '../models/Question';
-import { Assessment } from '../models/Assessment';
-import { Response } from '../models/Response';
-import { Unit } from '../models/Unit';
-import { Topic } from '../models/Topic';
-import { getAIProvider, type DraftQuestion } from '../ai/provider';
-import { retrieveUnits } from './rag';
-import { recordAnswer, selectAdaptiveTopics } from './learnerModel';
-import { fingerprint, localEmbed, safeCosineSimilarity, sameSpace } from '../utils/embedding';
-import { activeSpace } from '../utils/vectorSpace';
-import { normalizeForFingerprint, levenshtein, splitSentences } from '../utils/text';
-import { logEvent } from './events';
+import { Question } from '../models/Question.js';
+import { Assessment } from '../models/Assessment.js';
+import { Response } from '../models/Response.js';
+import { Unit } from '../models/Unit.js';
+import { Topic } from '../models/Topic.js';
+import { getAIProvider, type DraftQuestion } from '../ai/provider.js';
+import { retrieveUnits } from './rag.js';
+import { recordAnswer, selectAdaptiveTopics } from './learnerModel.js';
+import { fingerprint, localEmbed, safeCosineSimilarity, sameSpace } from '../utils/embedding.js';
+import { activeSpace } from '../utils/vectorSpace.js';
+import { normalizeForFingerprint, levenshtein, splitSentences } from '../utils/text.js';
+import { logEvent } from './events.js';
 
 /**
  * ============================================================================
@@ -759,7 +759,7 @@ export async function submitAnswer(
 
   const units = await Unit.find({ _id: { $in: question.sourceUnitIds } }).lean();
   const sourceIds = [...new Set(units.map((u: any) => String(u.sourceId)))];
-  const { Source } = await import('../models/Source');
+  const { Source } = await import('../models/Source.js');
   const sources = await Source.find({ _id: { $in: sourceIds } }).select('title type').lean();
   const smap = new Map(sources.map((s) => [String(s._id), s]));
 

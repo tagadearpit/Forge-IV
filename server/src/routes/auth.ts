@@ -1,12 +1,12 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
-import { User } from '../models/User';
-import { env } from '../config/env';
-import { ApiError, asyncHandler, validateBody } from '../middleware/error';
-import { requireAuth, signToken, AuthedRequest } from '../middleware/auth';
-import { authLimiter } from '../middleware/rateLimit';
-import { logEvent } from '../services/events';
+import { User } from '../models/User.js';
+import { env } from '../config/env.js';
+import { ApiError, asyncHandler, validateBody } from '../middleware/error.js';
+import { requireAuth, signToken, AuthedRequest } from '../middleware/auth.js';
+import { authLimiter } from '../middleware/rateLimit.js';
+import { logEvent } from '../services/events.js';
 
 const router = Router();
 

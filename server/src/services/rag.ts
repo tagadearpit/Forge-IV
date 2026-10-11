@@ -1,15 +1,15 @@
-import { Unit } from '../models/Unit';
-import { Source } from '../models/Source';
-import { Topic } from '../models/Topic';
-import { getAIProvider } from '../ai/provider';
-import { safeCosineSimilarity, localEmbed } from '../utils/embedding';
+import { Unit } from '../models/Unit.js';
+import { Source } from '../models/Source.js';
+import { Topic } from '../models/Topic.js';
+import { getAIProvider } from '../ai/provider.js';
+import { safeCosineSimilarity, localEmbed } from '../utils/embedding.js';
 import {
   activeSpace,
   groundingThresholds,
   type VectorSpace,
-} from '../utils/vectorSpace';
-import { contentWords } from '../utils/text';
-import { env } from '../config/env';
+} from '../utils/vectorSpace.js';
+import { contentWords } from '../utils/text.js';
+import { env } from '../config/env.js';
 
 /**
  * ============================================================================

@@ -1,23 +1,23 @@
 import express from 'express';
 import cors from 'cors';
-import { env } from './config/env';
-import { dbIsHealthy } from './db/connect';
-import { providerInfo } from './ai/provider';
-import { errorHandler, notFoundHandler, ApiError, asyncHandler } from './middleware/error';
-import { apiLimiter } from './middleware/rateLimit';
-import { requireAuth } from './middleware/auth';
+import { env } from './config/env.js';
+import { dbIsHealthy } from './db/connect.js';
+import { providerInfo } from './ai/provider.js';
+import { errorHandler, notFoundHandler, ApiError, asyncHandler } from './middleware/error.js';
+import { apiLimiter } from './middleware/rateLimit.js';
+import { requireAuth } from './middleware/auth.js';
 
-import authRoutes from './routes/auth';
-import sourceRoutes from './routes/sources';
-import topicRoutes from './routes/topics';
-import tutorRoutes from './routes/tutor';
-import assessmentRoutes from './routes/assessments';
-import masteryRoutes from './routes/mastery';
-import { revisionRouter } from './routes/studyPlan';
-import studyPlanRoutes from './routes/studyPlan';
-import onboardingRoutes from './routes/onboarding';
-import evalRoutes from './routes/eval';
-import { getMasterySummary } from './services/learnerModel';
+import authRoutes from './routes/auth.js';
+import sourceRoutes from './routes/sources.js';
+import topicRoutes from './routes/topics.js';
+import tutorRoutes from './routes/tutor.js';
+import assessmentRoutes from './routes/assessments.js';
+import masteryRoutes from './routes/mastery.js';
+import { revisionRouter } from './routes/studyPlan.js';
+import studyPlanRoutes from './routes/studyPlan.js';
+import onboardingRoutes from './routes/onboarding.js';
+import evalRoutes from './routes/eval.js';
+import { getMasterySummary } from './services/learnerModel.js';
 
 export function createApp() {
   const app = express();
@@ -85,13 +85,13 @@ export function createApp() {
 }
 
 async function handleDashboard(req: express.Request & { userId?: string }, res: express.Response) {
-  const { User } = await import('./models/User');
-  const { Source } = await import('./models/Source');
-  const { Assessment } = await import('./models/Assessment');
-  const { Event } = await import('./models/Event');
-  const { computeStreak } = await import('./services/events');
-  const { getAIProvider } = await import('./ai/provider');
-  const { answerQuestion } = await import('./services/rag');
+  const { User } = await import('./models/User.js');
+  const { Source } = await import('./models/Source.js');
+  const { Assessment } = await import('./models/Assessment.js');
+  const { Event } = await import('./models/Event.js');
+  const { computeStreak } = await import('./services/events.js');
+  const { getAIProvider } = await import('./ai/provider.js');
+  const { answerQuestion } = await import('./services/rag.js');
 
   const userId = req.userId as string;
   const [user, sources, assessments, events, streak, summary] = await Promise.all([

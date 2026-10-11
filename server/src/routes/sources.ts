@@ -3,15 +3,15 @@ import multer from 'multer';
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { Source, SOURCE_TYPES } from '../models/Source';
-import { Unit } from '../models/Unit';
-import { Topic } from '../models/Topic';
-import { env } from '../config/env';
-import { ApiError, asyncHandler } from '../middleware/error';
-import { requireAuth, signFileToken, verifyFileToken, AuthedRequest } from '../middleware/auth';
-import { heavyLimiter } from '../middleware/rateLimit';
-import { ingestSource } from '../services/ingestion';
-import { logEvent } from '../services/events';
+import { Source, SOURCE_TYPES } from '../models/Source.js';
+import { Unit } from '../models/Unit.js';
+import { Topic } from '../models/Topic.js';
+import { env } from '../config/env.js';
+import { ApiError, asyncHandler } from '../middleware/error.js';
+import { requireAuth, signFileToken, verifyFileToken, AuthedRequest } from '../middleware/auth.js';
+import { heavyLimiter } from '../middleware/rateLimit.js';
+import { ingestSource } from '../services/ingestion.js';
+import { logEvent } from '../services/events.js';
 
 const router = Router();
 

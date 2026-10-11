@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { Event } from '../models/Event';
+import { Event } from '../models/Event.js';
 
 export type EventType =
   | 'quiz_taken'

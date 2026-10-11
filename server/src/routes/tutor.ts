@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
-import { asyncHandler, validateBody, ApiError } from '../middleware/error';
-import { requireAuth, AuthedRequest } from '../middleware/auth';
-import { answerQuestion, retrieveUnits } from '../services/rag';
-import { env } from '../config/env';
-import { logEvent } from '../services/events';
+import { asyncHandler, validateBody, ApiError } from '../middleware/error.js';
+import { requireAuth, AuthedRequest } from '../middleware/auth.js';
+import { answerQuestion, retrieveUnits } from '../services/rag.js';
+import { env } from '../config/env.js';
+import { logEvent } from '../services/events.js';
 
 const router = Router();
 
@@ -74,7 +74,7 @@ router.get(
   '/history',
   requireAuth,
   asyncHandler(async (req: AuthedRequest, res) => {
-    const { Event } = await import('../models/Event');
+    const { Event } = await import('../models/Event.js');
     const rows = await Event.find({ userId: req.userId, type: 'question_asked' })
       .sort({ timestamp: -1 })
       .limit(20)

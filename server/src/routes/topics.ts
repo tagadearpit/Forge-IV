@@ -1,8 +1,8 @@
 import { Router } from 'express';
-import { Topic } from '../models/Topic';
-import { Mastery } from '../models/Mastery';
-import { asyncHandler, ApiError } from '../middleware/error';
-import { requireAuth, AuthedRequest } from '../middleware/auth';
+import { Topic } from '../models/Topic.js';
+import { Mastery } from '../models/Mastery.js';
+import { asyncHandler, ApiError } from '../middleware/error.js';
+import { requireAuth, AuthedRequest } from '../middleware/auth.js';
 
 const router = Router();
 

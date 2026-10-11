@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { asyncHandler, validateBody, ApiError } from '../middleware/error';
-import { requireAuth, AuthedRequest } from '../middleware/auth';
-import { generateStudyPlan, completeTask, buildRevision } from '../services/studyPlan';
-import { Event } from '../models/Event';
+import { asyncHandler, validateBody, ApiError } from '../middleware/error.js';
+import { requireAuth, AuthedRequest } from '../middleware/auth.js';
+import { generateStudyPlan, completeTask, buildRevision } from '../services/studyPlan.js';
+import { Event } from '../models/Event.js';
 
 const router = Router();
 

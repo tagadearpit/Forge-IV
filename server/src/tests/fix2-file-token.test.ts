@@ -1,8 +1,8 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import jwt from 'jsonwebtoken';
-import { signFileToken, verifyFileToken, signToken } from '../middleware/auth';
-import { env } from '../config/env';
+import { signFileToken, verifyFileToken, signToken } from '../middleware/auth.js';
+import { env } from '../config/env.js';
 
 /**
  * FIX 2 — file tokens for <iframe>/<video>/<audio> src URLs.

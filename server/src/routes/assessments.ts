@@ -1,16 +1,16 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { Assessment } from '../models/Assessment';
-import { Question } from '../models/Question';
-import { Response } from '../models/Response';
-import { Topic } from '../models/Topic';
-import { asyncHandler, ApiError, validateBody } from '../middleware/error';
-import { requireAuth, AuthedRequest } from '../middleware/auth';
-import { heavyLimiter } from '../middleware/rateLimit';
-import { createAssessment, submitAnswer } from '../services/assessment';
-import { getMasteryOverview } from '../services/learnerModel';
-import { logEvent } from '../services/events';
-import { getAIProvider } from '../ai/provider';
+import { Assessment } from '../models/Assessment.js';
+import { Question } from '../models/Question.js';
+import { Response } from '../models/Response.js';
+import { Topic } from '../models/Topic.js';
+import { asyncHandler, ApiError, validateBody } from '../middleware/error.js';
+import { requireAuth, AuthedRequest } from '../middleware/auth.js';
+import { heavyLimiter } from '../middleware/rateLimit.js';
+import { createAssessment, submitAnswer } from '../services/assessment.js';
+import { getMasteryOverview } from '../services/learnerModel.js';
+import { logEvent } from '../services/events.js';
+import { getAIProvider } from '../ai/provider.js';
 
 const router = Router();
 

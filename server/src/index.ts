@@ -1,7 +1,7 @@
 import 'dotenv/config';
-import { env } from './config/env';
-import { connectDb, disconnectDb } from './db/connect';
-import { createApp } from './app';
+import { env } from './config/env.js';
+import { connectDb, disconnectDb } from './db/connect.js';
+import { createApp } from './app.js';
 
 async function main() {
   // Bind to 0.0.0.0 and process.env.PORT so Replit's Run button works with no

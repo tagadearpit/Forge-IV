@@ -6,12 +6,12 @@ import {
   sameSpace,
   localEmbed,
   EMBEDDING_DIM,
-} from '../utils/embedding';
-import { Unit } from '../models/Unit';
-import { retrieveUnits } from '../services/rag';
-import { __setActiveSpace, activeSpace, groundingThresholds } from '../utils/vectorSpace';
+} from '../utils/embedding.js';
+import { Unit } from '../models/Unit.js';
+import { retrieveUnits } from '../services/rag.js';
+import { __setActiveSpace, activeSpace, groundingThresholds } from '../utils/vectorSpace.js';
 import mongoose from 'mongoose';
-import { getAIProvider } from '../ai/provider';
+import { getAIProvider } from '../ai/provider.js';
 
 /**
  * FIX 1 — embedding-space consistency.
@@ -71,7 +71,7 @@ describe('retrieveUnits embeds the query in the units\' space', () => {
   async function seed() {
     await mongoose.connect('mongodb://127.0.0.1:27017/studymind_vectorspace_test');
     await mongoose.connection.dropDatabase();
-    const { User } = await import('../models/User');
+    const { User } = await import('../models/User.js');
     const u = await User.create({
       name: 'Vector Space Tester',
       email: `vs_${Date.now()}@test.local`,

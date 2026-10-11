@@ -1,10 +1,10 @@
-import { User } from '../models/User';
-import { Event } from '../models/Event';
-import { Topic } from '../models/Topic';
-import { getMasteryOverview, type TopicMasteryView } from './learnerModel';
-import { getAIProvider } from '../ai/provider';
-import { retrieveUnits } from './rag';
-import { inZPD } from '../utils/bkt';
+import { User } from '../models/User.js';
+import { Event } from '../models/Event.js';
+import { Topic } from '../models/Topic.js';
+import { getMasteryOverview, type TopicMasteryView } from './learnerModel.js';
+import { getAIProvider } from '../ai/provider.js';
+import { retrieveUnits } from './rag.js';
+import { inZPD } from '../utils/bkt.js';
 
 /**
  * Study plan generation: weak topics + forgetting curve + days-to-exam.
@@ -108,7 +108,7 @@ function estimateMinutes(t: TopicMasteryView, kind: StudyTask['kind']): number {
 export async function completeTask(userId: string, taskId: string): Promise<boolean> {
   const row = await Event.findOne({ userId, type: 'study_task_done', 'meta.taskId': taskId });
   if (row) return true;
-  const { logEvent } = await import('./events');
+  const { logEvent } = await import('./events.js');
   await logEvent(userId, 'study_task_done', null, null, 'study_plan', { taskId });
   return true;
 }

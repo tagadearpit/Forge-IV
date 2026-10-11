@@ -4,11 +4,11 @@ import {
   evaluateNumericExpression,
   gradeAnswer,
   generateQuestions,
-} from '../services/assessment';
-import { getAIProvider } from '../ai/provider';
+} from '../services/assessment.js';
+import { getAIProvider } from '../ai/provider.js';
 import mongoose from 'mongoose';
-import { Unit } from '../models/Unit';
-import { Topic } from '../models/Topic';
+import { Unit } from '../models/Unit.js';
+import { Topic } from '../models/Topic.js';
 
 /**
  * FIX 4 — numeric tolerance.
@@ -133,7 +133,7 @@ describe('Fix 6 — no cross-user topic leakage', () => {
     await mongoose.connect('mongodb://127.0.0.1:27017/studymind_concurrency_test');
     await mongoose.connection.dropDatabase();
 
-    const { User } = await import('../models/User');
+    const { User } = await import('../models/User.js');
     const mk = async (name: string, email: string) => {
       const u = await User.create({ name, email, phone: '+919000000001', passwordHash: 'x' });
       const topic = await Topic.create({

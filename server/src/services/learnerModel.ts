@@ -1,6 +1,6 @@
-import { Mastery } from '../models/Mastery';
-import { Topic } from '../models/Topic';
-import { User } from '../models/User';
+import { Mastery } from '../models/Mastery.js';
+import { Topic } from '../models/Topic.js';
+import { User } from '../models/User.js';
 import {
   DEFAULT_BKT,
   DEFAULT_P_LEARNED,
@@ -14,12 +14,12 @@ import {
   priorityScore,
   retention,
   updateStability,
-} from '../utils/bkt';
-import { logEvent } from './events';
+} from '../utils/bkt.js';
+import { logEvent } from './events.js';
 import {
   selectAdaptiveTopics as selectPolicy,
   type MasterySnapshot,
-} from './selection';
+} from './selection.js';
 
 /**
  * Learner-model service: owns every read/write of per-topic mastery so the BKT

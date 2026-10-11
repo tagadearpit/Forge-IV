@@ -1,16 +1,16 @@
 import { Router } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
-import { EvalRun } from '../models/EvalRun';
-import { Unit } from '../models/Unit';
-import { Source } from '../models/Source';
-import { Topic } from '../models/Topic';
-import { asyncHandler, ApiError } from '../middleware/error';
-import { requireAuth, AuthedRequest } from '../middleware/auth';
-import { heavyLimiter } from '../middleware/rateLimit';
-import { answerQuestion, retrieveUnits } from '../services/rag';
-import { getAIProvider } from '../ai/provider';
-import { contentWords } from '../utils/text';
+import { EvalRun } from '../models/EvalRun.js';
+import { Unit } from '../models/Unit.js';
+import { Source } from '../models/Source.js';
+import { Topic } from '../models/Topic.js';
+import { asyncHandler, ApiError } from '../middleware/error.js';
+import { requireAuth, AuthedRequest } from '../middleware/auth.js';
+import { heavyLimiter } from '../middleware/rateLimit.js';
+import { answerQuestion, retrieveUnits } from '../services/rag.js';
+import { getAIProvider } from '../ai/provider.js';
+import { contentWords } from '../utils/text.js';
 
 const router = Router();
 

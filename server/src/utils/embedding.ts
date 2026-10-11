@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { contentWords, normalizeForFingerprint } from './text';
+import { contentWords, normalizeForFingerprint } from './text.js';
 
 export const EMBEDDING_DIM = 256;
 

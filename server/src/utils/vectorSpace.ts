@@ -1,5 +1,5 @@
-import { env } from '../config/env';
-import { EMBEDDING_DIM } from './embedding';
+import { env } from '../config/env.js';
+import { EMBEDDING_DIM } from './embedding.js';
 
 /**
  * ============================================================================

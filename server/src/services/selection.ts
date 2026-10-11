@@ -1,4 +1,4 @@
-import { priorityScore, inZPD } from '../utils/bkt';
+import { priorityScore, inZPD } from '../utils/bkt.js';
 
 /**
  * ============================================================================

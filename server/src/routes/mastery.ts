@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { asyncHandler, ApiError, validateBody } from '../middleware/error';
-import { requireAuth, AuthedRequest } from '../middleware/auth';
-import { getMasteryOverview, getMasterySummary, recordAnswer } from '../services/learnerModel';
+import { asyncHandler, ApiError, validateBody } from '../middleware/error.js';
+import { requireAuth, AuthedRequest } from '../middleware/auth.js';
+import { getMasteryOverview, getMasterySummary, recordAnswer } from '../services/learnerModel.js';
 
 const router = Router();
 

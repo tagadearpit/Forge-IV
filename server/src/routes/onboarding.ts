@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { User } from '../models/User';
-import { Topic } from '../models/Topic';
-import { asyncHandler, validateBody, ApiError } from '../middleware/error';
-import { requireAuth, AuthedRequest } from '../middleware/auth';
-import { applyIntakePrior } from '../services/learnerModel';
+import { User } from '../models/User.js';
+import { Topic } from '../models/Topic.js';
+import { asyncHandler, validateBody, ApiError } from '../middleware/error.js';
+import { requireAuth, AuthedRequest } from '../middleware/auth.js';
+import { applyIntakePrior } from '../services/learnerModel.js';
 
 const router = Router();
 

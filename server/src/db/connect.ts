@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { env } from '../config/env';
+import { env } from '../config/env.js';
 
 /**
  * Connects to MongoDB Atlas when MONGODB_URI is provided.

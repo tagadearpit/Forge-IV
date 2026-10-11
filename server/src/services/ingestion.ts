@@ -1,11 +1,11 @@
-import { Source, SourceStatus } from '../models/Source';
-import { Unit } from '../models/Unit';
-import { Topic } from '../models/Topic';
-import { getAIProvider } from '../ai/provider';
-import { chunkText } from '../utils/text';
-import { safeCosineSimilarity, localEmbed } from '../utils/embedding';
-import { activeSpace } from '../utils/vectorSpace';
-import { logEvent } from './events';
+import { Source, SourceStatus } from '../models/Source.js';
+import { Unit } from '../models/Unit.js';
+import { Topic } from '../models/Topic.js';
+import { getAIProvider } from '../ai/provider.js';
+import { chunkText } from '../utils/text.js';
+import { safeCosineSimilarity, localEmbed } from '../utils/embedding.js';
+import { activeSpace } from '../utils/vectorSpace.js';
+import { logEvent } from './events.js';
 import {
   extractPdf,
   extractPptx,
@@ -16,7 +16,7 @@ import {
   segmentsToUnits,
   ExtractionError,
   RawUnit,
-} from './extractors';
+} from './extractors.js';
 
 /**
  * ============================================================================
