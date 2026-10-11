@@ -1,6 +1,6 @@
 <div align="center">
 
-# StudyMind
+# StudyMind 
 
 **A source-grounded AI study companion.**
 Multimodal AI Hackathon 2026 · Track D — Personalized Tutoring & Adaptive Learning
