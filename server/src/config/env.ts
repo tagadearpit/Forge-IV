@@ -1,0 +1,68 @@
+import path from 'node:path';
+import dotenv from 'dotenv';
+
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+dotenv.config(); // never throw if .env is absent (Replit injects env directly)
+
+function str(key: string, fallback = ''): string {
+  const v = process.env[key];
+  return v === undefined || v === '' ? fallback : v;
+}
+
+function num(key: string, fallback: number): number {
+  const v = process.env[key];
+  if (v === undefined || v === '') return fallback;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+const NODE_ENV = str('NODE_ENV', 'development');
+const geminiKey = str('GEMINI_API_KEY');
+const forced = str('AI_PROVIDER').toLowerCase();
+
+/**
+ * Provider selection order:
+ *   1. explicit AI_PROVIDER override
+ *   2. gemini when GEMINI_API_KEY is present
+ *   3. local deterministic provider (offline, no fabricated answers)
+ */
+const provider: 'gemini' | 'local' =
+  forced === 'gemini' || forced === 'local'
+    ? forced
+    : geminiKey
+      ? 'gemini'
+      : 'local';
+
+export const env = {
+  NODE_ENV,
+  isProd: NODE_ENV === 'production',
+  PORT: num('PORT', 3001),
+  CLIENT_ORIGIN: str('CLIENT_ORIGIN', 'http://localhost:3000'),
+
+  MONGODB_URI: str('MONGODB_URI'),
+  MONGODB_DB: str('MONGODB_DB', 'studymind'),
+
+  JWT_SECRET: str('JWT_SECRET', 'dev-only-insecure-secret-change-me'),
+  JWT_EXPIRES_IN: str('JWT_EXPIRES_IN', '7d'),
+  BCRYPT_COST: num('BCRYPT_COST', 12),
+
+  GEMINI_API_KEY: geminiKey,
+  GEMINI_MODEL: str('GEMINI_MODEL', 'gemini-2.0-flash'),
+  GEMINI_EMBED_MODEL: str('GEMINI_EMBED_MODEL', 'text-embedding-004'),
+  provider,
+
+  UPLOAD_DIR: path.resolve(process.cwd(), str('UPLOAD_DIR', 'uploads')),
+  MAX_UPLOAD_MB: num('MAX_UPLOAD_MB', 100),
+
+  RETRIEVAL_TOP_K: num('RETRIEVAL_TOP_K', 8),
+  // Grounding gate: grounded if EITHER signal passes. See services/rag.ts for
+  // the calibration methodology. Defaults are tuned for the offline hashing
+  // embeddings; re-run scripts/calibrate_grounding.ts if the provider changes.
+  GROUNDING_SIMILARITY_THRESHOLD: num('GROUNDING_SIMILARITY_THRESHOLD', 0.17),
+  GROUNDING_LEXICAL_THRESHOLD: num('GROUNDING_LEXICAL_THRESHOLD', 0.55),
+} as const;
+
+if (env.isProd && env.JWT_SECRET === 'dev-only-insecure-secret-change-me') {
+  // Fail fast rather than shipping a predictable signing key.
+  throw new Error('JWT_SECRET must be set to a strong random value in production.');
+}

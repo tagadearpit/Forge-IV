@@ -1,0 +1,270 @@
+import { Router } from 'express';
+import multer from 'multer';
+import fs from 'node:fs';
+import path from 'node:path';
+import { z } from 'zod';
+import { Source, SOURCE_TYPES } from '../models/Source';
+import { Unit } from '../models/Unit';
+import { Topic } from '../models/Topic';
+import { env } from '../config/env';
+import { ApiError, asyncHandler } from '../middleware/error';
+import { requireAuth, AuthedRequest } from '../middleware/auth';
+import { heavyLimiter } from '../middleware/rateLimit';
+import { ingestSource } from '../services/ingestion';
+import { logEvent } from '../services/events';
+
+const router = Router();
+
+fs.mkdirSync(env.UPLOAD_DIR, { recursive: true });
+
+const ACCEPTED = new Set([
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'image/png',
+  'image/jpeg',
+  'image/jpg',
+  'video/mp4',
+  'audio/mpeg',
+  'audio/mp3',
+  'audio/wav',
+  'text/plain',
+  'text/markdown',
+]);
+
+const EXT_TYPE: Record<string, string> = {
+  '.pdf': 'application/pdf',
+  '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.mp4': 'video/mp4',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.txt': 'text/plain',
+  '.md': 'text/markdown',
+};
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, env.UPLOAD_DIR),
+    filename: (req, file, cb) => {
+      const safe = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80);
+      cb(null, `${req.params?.userId ?? 'anon'}-${Date.now()}-${safe}`);
+    },
+  }),
+  limits: { fileSize: env.MAX_UPLOAD_MB * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const ok = ACCEPTED.has(file.mimetype) || EXT_TYPE[ext];
+    if (!ok) {
+      cb(
+        new ApiError(
+          415,
+          'UNSUPPORTED_TYPE',
+          `Unsupported file type. Accepted: PDF, PPTX, PNG, JPG, MP4, MP3, TXT.`
+        ) as never
+      );
+      return;
+    }
+    cb(null, true);
+  },
+});
+
+function detectType(original: string, mime: string): (typeof SOURCE_TYPES)[number] {
+  const ext = path.extname(original).toLowerCase();
+  if (ext === '.pdf' || mime === 'application/pdf') return 'pdf';
+  if (ext === '.pptx' || mime.includes('presentationml')) return 'pptx';
+  if (['.png', '.jpg', '.jpeg'].includes(ext) || mime.startsWith('image/')) return 'image';
+  if (ext === '.mp4' || mime.startsWith('video/')) return 'video';
+  if (['.mp3', '.wav'].includes(ext) || mime.startsWith('audio/')) return 'audio';
+  if (['.txt', '.md'].includes(ext) || mime.startsWith('text/')) return 'text';
+  return 'text';
+}
+
+/* --------------------------- POST /sources ---------------------------- */
+
+router.post(
+  '/',
+  requireAuth,
+  heavyLimiter,
+  upload.single('file'),
+  asyncHandler(async (req: AuthedRequest, res) => {
+    if (!req.file) {
+      throw new ApiError(400, 'NO_FILE', 'No file was uploaded.');
+    }
+    if (req.file.size === 0) {
+      fs.unlink(req.file.path, () => {});
+      throw new ApiError(400, 'EMPTY_FILE', 'That file is empty. Please upload a file with content.');
+    }
+
+    const type = detectType(req.file.originalname, req.file.mimetype);
+    const title = (req.body?.title || path.basename(req.file.originalname, path.extname(req.file.originalname))).slice(0, 120);
+
+    const uid = req.userId!;
+    const source = await Source.create({
+      userId: uid,
+      type,
+      title,
+      fileUrl: path.basename(req.file.path),
+      originalName: req.file.originalname,
+      mimeType: req.file.mimetype,
+      status: 'queued',
+      sizeBytes: req.file.size,
+    });
+
+    await logEvent(uid, 'source_uploaded', null, null, 'upload', {
+      sourceId: String(source._id),
+    });
+
+    // Kick off ingestion without blocking the response. The client polls the
+    // source status, which is why 202 (accepted, not created-and-ready) is the
+    // correct code here.
+    setImmediate(() => {
+      ingestSource(String(source._id), uid, req.file!.path, req.file!.mimetype).catch(
+        (err) => console.error('[ingest:background]', err.message)
+      );
+    });
+
+    res.status(202).json({ sourceId: String(source._id), status: source.status });
+  })
+);
+
+/* --------------------------- GET /sources ----------------------------- */
+
+router.get(
+  '/',
+  requireAuth,
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const sources = await Source.find({ userId: req.userId }).sort({ createdAt: -1 }).lean();
+    const topicNames = await Topic.find({ userId: req.userId }).select('name').lean();
+    const nameMap = new Map(topicNames.map((t: any) => [String(t._id), t.name]));
+
+    res.json({
+      sources: sources.map((s: any) => ({
+        id: String(s._id),
+        type: s.type,
+        title: s.title,
+        status: s.status,
+        statusReason: s.statusReason ?? null,
+        progress: s.progress ?? 0,
+        pageCount: s.pageCount ?? null,
+        durationSec: s.durationSec ?? null,
+        sizeBytes: s.sizeBytes ?? null,
+        unitCount: s.unitCount ?? 0,
+        createdAt: s.createdAt,
+        topics: (s.topicIds ?? []).map((id: string) => nameMap.get(String(id))).filter(Boolean),
+      })),
+    });
+  })
+);
+
+/* -------------------------- GET /sources/:id -------------------------- */
+
+router.get(
+  '/:id',
+  requireAuth,
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const source = await Source.findOne({ _id: req.params.id, userId: req.userId }).lean();
+    if (!source) throw new ApiError(404, 'SOURCE_NOT_FOUND', 'That source does not exist.');
+
+    const units = await Unit.find({ sourceId: source._id }).sort({ createdAt: 1 }).lean();
+    const topics = await Topic.find({ _id: { $in: source.topicIds ?? [] } }).lean();
+
+    res.json({
+      source: {
+        id: String(source._id),
+        type: source.type,
+        title: source.title,
+        status: source.status,
+        statusReason: source.statusReason ?? null,
+        pageCount: source.pageCount ?? null,
+        durationSec: source.durationSec ?? null,
+        progress: source.progress ?? 0,
+        stats: source.stats ?? null,
+        createdAt: source.createdAt,
+      },
+      units: units.map((u: any) => ({
+        id: String(u._id),
+        kind: u.kind,
+        text: u.text,
+        location: u.location,
+        figureDescription: u.figureDescription ?? null,
+        speakerNotes: u.speakerNotes ?? null,
+        topicIds: (u.topicIds ?? []).map(String),
+      })),
+      topics: topics.map((t: any) => ({
+        id: String(t._id),
+        name: t.name,
+        summary: t.summary ?? null,
+        keyConcepts: t.keyConcepts ?? [],
+      })),
+    });
+  })
+);
+
+/* ---------------------- GET /sources/:id/units/:unitId ------------------ */
+
+router.get(
+  '/:id/units/:unitId',
+  requireAuth,
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const unit = await Unit.findOne({
+      _id: req.params.unitId,
+      sourceId: req.params.id,
+      userId: req.userId,
+    }).lean();
+    if (!unit) throw new ApiError(404, 'UNIT_NOT_FOUND', 'That content unit does not exist.');
+    res.json({
+      unit: {
+        id: String(unit._id),
+        kind: unit.kind,
+        text: unit.text,
+        location: unit.location,
+        figureDescription: unit.figureDescription ?? null,
+      },
+    });
+  })
+);
+
+/* -------------------------- GET /sources/:id/file ---------------------- */
+
+router.get(
+  '/:id/file',
+  requireAuth,
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const source = await Source.findOne({ _id: req.params.id, userId: req.userId }).lean();
+    if (!source) throw new ApiError(404, 'SOURCE_NOT_FOUND', 'That source does not exist.');
+
+    const filePath = path.join(env.UPLOAD_DIR, path.basename(source.fileUrl));
+    if (!fs.existsSync(filePath)) {
+      throw new ApiError(404, 'FILE_MISSING', 'The original file is no longer available on the server.');
+    }
+
+    res.setHeader('Content-Type', source.mimeType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `inline; filename="${source.originalName}"`);
+    fs.createReadStream(filePath).pipe(res);
+  })
+);
+
+/* ------------------------- DELETE /sources/:id ------------------------ */
+
+router.delete(
+  '/:id',
+  requireAuth,
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const source = await Source.findOne({ _id: req.params.id, userId: req.userId });
+    if (!source) throw new ApiError(404, 'SOURCE_NOT_FOUND', 'That source does not exist.');
+
+    await Promise.all([
+      Unit.deleteMany({ sourceId: source._id }),
+      Topic.deleteMany({ _id: { $in: source.topicIds ?? [] } }),
+    ]);
+    // Remove the original file, but never fail the request if it is already gone.
+    fs.unlink(path.join(env.UPLOAD_DIR, path.basename(source.fileUrl)), () => {});
+    await source.deleteOne();
+
+    res.status(204).send();
+  })
+);
+
+export default router;
