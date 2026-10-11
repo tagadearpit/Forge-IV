@@ -21,6 +21,9 @@ const QuestionSchema = new Schema(
     /** normalized-text hash + embedding vector, used for cross-assessment dedupe. */
     fingerprint: { type: String, default: null, index: true },
     fingerprintEmbedding: { type: [Number], default: undefined },
+    /** Embedding space for fingerprintEmbedding; never compare across spaces. */
+    fingerprintEmbeddingProvider: { type: String, enum: ['gemini', 'local'], default: null, index: true },
+    fingerprintEmbeddingDim: { type: Number, default: null },
   },
   { timestamps: true }
 );

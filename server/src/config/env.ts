@@ -55,11 +55,16 @@ export const env = {
   MAX_UPLOAD_MB: num('MAX_UPLOAD_MB', 100),
 
   RETRIEVAL_TOP_K: num('RETRIEVAL_TOP_K', 8),
-  // Grounding gate: grounded if EITHER signal passes. See services/rag.ts for
-  // the calibration methodology. Defaults are tuned for the offline hashing
-  // embeddings; re-run scripts/calibrate_grounding.ts if the provider changes.
-  GROUNDING_SIMILARITY_THRESHOLD: num('GROUNDING_SIMILARITY_THRESHOLD', 0.17),
-  GROUNDING_LEXICAL_THRESHOLD: num('GROUNDING_LEXICAL_THRESHOLD', 0.55),
+  // Grounding gate: grounded if EITHER signal passes. See services/rag.ts and
+  // utils/vectorSpace.ts for the methodology.
+  //
+  // Thresholds are PER PROVIDER because the local hashing vectoriser and Gemini
+  // produce different similarity distributions — one shared number cannot be
+  // correct for both. GROUNDING_SIMILARITY_THRESHOLD is retained as a legacy
+  // override for backward compatibility with older .env files.
+  GROUNDING_SIMILARITY_THRESHOLD: str('GROUNDING_SIMILARITY_THRESHOLD'),
+  GROUNDING_SIMILARITY_THRESHOLD_LEGACY: str('GROUNDING_SIMILARITY_THRESHOLD_LEGACY'),
+  GROUNDING_LEXICAL_THRESHOLD: str('GROUNDING_LEXICAL_THRESHOLD'),
 } as const;
 
 if (env.isProd && env.JWT_SECRET === 'dev-only-insecure-secret-change-me') {

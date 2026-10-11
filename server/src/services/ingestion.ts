@@ -3,7 +3,8 @@ import { Unit } from '../models/Unit';
 import { Topic } from '../models/Topic';
 import { getAIProvider } from '../ai/provider';
 import { chunkText } from '../utils/text';
-import { cosineSimilarity, localEmbed } from '../utils/embedding';
+import { safeCosineSimilarity, localEmbed } from '../utils/embedding';
+import { activeSpace } from '../utils/vectorSpace';
 import { logEvent } from './events';
 import {
   extractPdf,
@@ -173,17 +174,25 @@ export async function ingestSource(
 
     /* ---------------------- 3. EMBED ---------------------- */
     await setStatus('indexing', 0.6);
+    // Embedding space is recorded per unit. If the provider call fails we fall
+    // back to local vectors — but we LABEL those units 'local' so retrieval can
+    // exclude them from a Gemini query instead of comparing incompatible spaces.
+    let space = activeSpace();
     let vectors: number[][] = [];
     try {
       vectors = await ai.embed(chunked.map((c) => c.text));
+      const first = vectors.find((v) => Array.isArray(v) && v.length);
+      if (first?.length) space = { provider: space.provider, dim: first.length };
     } catch (err) {
       // Never lose the source because the embedding service blipped.
       console.warn('[ingest] batch embed failed, falling back to local vectors', (err as Error).message);
-      vectors = chunked.map((c) => localEmbed(c.text));
+      space = { provider: 'local', dim: 0 };
     }
-    if (!vectors.length || vectors.length !== chunked.length) {
+    if (!vectors.length || vectors.length !== chunked.length || !space.dim) {
       vectors = chunked.map((c) => localEmbed(c.text));
+      space = { provider: 'local', dim: vectors[0]?.length ?? 0 };
     }
+    console.log(`[ingest] ${chunked.length} units -> ${space.provider}/${space.dim}-dim space`);
 
     // Clear any previous units so re-ingestion does not duplicate content.
     await Unit.deleteMany({ sourceId: source._id });
@@ -197,6 +206,8 @@ export async function ingestSource(
       figureDescription: c.raw.figureDescription ?? null,
       speakerNotes: c.raw.speakerNotes ?? null,
       embedding: vectors[i],
+      embeddingProvider: space.provider,
+      embeddingDim: vectors[i]?.length ?? space.dim,
       topicIds: [],
       charStart: c.charStart,
       charEnd: c.charEnd,
@@ -275,7 +286,10 @@ export async function buildTopicsForSource(
     const proposedEmbed = localEmbed(t.name);
     let mergedWith: string | null = null;
     for (const [id, emb] of existingEmbeds) {
-      if (cosineSimilarity(proposedEmbed, emb) > 0.88) {
+      // Topic merging is deliberately LOCAL-ONLY: both sides call localEmbed(),
+      // so they are always in the same space and the comparison is valid.
+      // (Topic names are short strings; a semantic model is not needed here.)
+      if (safeCosineSimilarity(proposedEmbed, emb) > 0.88) {
         mergedWith = id;
         break;
       }
@@ -310,7 +324,7 @@ export async function buildTopicsForSource(
   for (const topicId of createdIds) {
     const topicEmbed = existingEmbeds.get(topicId) ?? localEmbed(topicId);
     const best = unitTexts
-      .map((u) => ({ id: u.id, sim: cosineSimilarity(u.emb, topicEmbed) }))
+      .map((u) => ({ id: u.id, sim: safeCosineSimilarity(u.emb, topicEmbed) }))
       .filter((u) => u.sim > 0.08)
       .sort((a, b) => b.sim - a.sim)
       .slice(0, 25);

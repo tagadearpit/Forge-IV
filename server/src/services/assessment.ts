@@ -6,7 +6,8 @@ import { Topic } from '../models/Topic';
 import { getAIProvider, type DraftQuestion } from '../ai/provider';
 import { retrieveUnits } from './rag';
 import { recordAnswer, selectAdaptiveTopics } from './learnerModel';
-import { fingerprint, localEmbed, cosineSimilarity } from '../utils/embedding';
+import { fingerprint, localEmbed, safeCosineSimilarity, sameSpace } from '../utils/embedding';
+import { activeSpace } from '../utils/vectorSpace';
 import { normalizeForFingerprint, levenshtein, splitSentences } from '../utils/text';
 import { logEvent } from './events';
 
@@ -270,15 +271,31 @@ async function findDuplicate(
   }
 
   // 3. Embedding cosine — catches genuine paraphrase.
-  const candVec = localEmbed(candidate.text);
+  //    The candidate is embedded with the ACTIVE provider, and stored vectors
+  //    from a different space are skipped. Previously the candidate used the
+  //    local hash vector while stored vectors came from Gemini, so this branch
+  //    was comparing unrelated coordinate spaces whenever Gemini was enabled.
+  const ai = getAIProvider();
+  let candVec: number[] | null = null;
+  try {
+    const [qv] = await ai.embed([candidate.text]);
+    if (qv?.length) candVec = qv;
+  } catch {
+    candVec = null;
+  }
+  if (!candVec && activeSpace().provider === 'local') candVec = localEmbed(candidate.text);
+  if (!candVec) return null;
+
   const withVec = await Question.find({ userId })
-    .select('text fingerprintEmbedding')
+    .select('text fingerprintEmbedding fingerprintEmbeddingProvider fingerprintEmbeddingDim')
     .lean()
     .limit(500);
   for (const p of withVec) {
     const vec = (p as any).fingerprintEmbedding as number[] | undefined;
-    if (!vec?.length) continue;
-    const sim = cosineSimilarity(candVec, vec);
+    if (!sameSpace(vec, candVec)) continue; // never compare across spaces
+    const provider = (p as any).fingerprintEmbeddingProvider as string | null;
+    if (provider && provider !== activeSpace().provider) continue;
+    const sim = safeCosineSimilarity(candVec, vec);
     if (sim > similarityReject) return { similarity: Number(sim.toFixed(3)) };
   }
   return null;
@@ -442,8 +459,26 @@ export async function createAssessment(req: GenerateRequest) {
 
   // Store embeddings alongside fingerprints so later dedupe can compare them.
   const docs = questions.map((q) => ({ ...q, userId: req.userId, assessmentId: assessment._id }));
-  const vecs = await getAIProvider().embed(docs.map((d) => d.text));
-  const withVec = docs.map((d, i) => ({ ...d, fingerprintEmbedding: vecs[i] ?? localEmbed(d.text) }));
+  const ai2 = getAIProvider();
+  let vecs: number[][] = [];
+  let fpSpace = activeSpace();
+  try {
+    vecs = await ai2.embed(docs.map((d) => d.text));
+    const first = vecs.find((v) => Array.isArray(v) && v.length);
+    if (first?.length) fpSpace = { provider: fpSpace.provider, dim: first.length };
+  } catch {
+    vecs = [];
+  }
+  if (!vecs.length || vecs.length !== docs.length || !fpSpace.dim) {
+    vecs = docs.map((d) => localEmbed(d.text));
+    fpSpace = { provider: 'local', dim: vecs[0]?.length ?? 0 };
+  }
+  const withVec = docs.map((d, i) => ({
+    ...d,
+    fingerprintEmbedding: vecs[i],
+    fingerprintEmbeddingProvider: fpSpace.provider,
+    fingerprintEmbeddingDim: vecs[i]?.length ?? fpSpace.dim,
+  }));
 
   const inserted = await Question.insertMany(withVec as never, { ordered: false });
 

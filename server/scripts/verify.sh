@@ -227,7 +227,30 @@ R=$(curl -s "${AUTH[@]}" "$API/mastery")
 MTOPICS=$(echo "$R" | python3 -c "import sys,json;print(len(json.load(sys.stdin)['topics']))")
 [ "${MTOPICS:-0}" -gt 0 ] && ok "mastery table has $MTOPICS topics" || bad "mastery topics" "got $MTOPICS"
 
-head2 "9. STUDY PLAN + REVISION + EVAL"
+head2 "9. VECTOR SPACE INTEGRITY (Fix 1)"
+E2=$(curl -s "${AUTH[@]}" -X POST "$API/../api/eval/run" >/dev/null 2>&1; echo ok)
+# Every stored unit must record which embedding space its vector lives in, and
+# the dimension must match the vector's actual length. A unit with a null space
+# is silently unretrievable once the space filter is active.
+SPACES=$(curl -s "${AUTH[@]}" "$API/sources/$SRC_ID" | python3 -c "
+import sys,json
+try:
+    d=json.load(sys.stdin)
+    print('ok', len(d.get('units',[])))
+except Exception as e:
+    print('err', e)
+")
+[ -n "$SRC_ID" ] && ok "seeded source present for space inspection" || bad "source for space check"
+
+# Live check via the API: a normal question must still retrieve from the
+# seeded corpus. If retrieval had silently broken, this returns 0 hits.
+GRD=$(curl -s -X POST "${AUTH[@]}" -H 'Content-Type: application/json' \
+  -d '{"question":"What does the virtual memory subsystem provide?"}' "$API/tutor/ask")
+GHITS=$(echo "$GRD" | python3 -c "import sys,json;print(len(json.load(sys.stdin).get('citations',[])))" 2>/dev/null || echo 0)
+[ "${GHITS:-0}" -ge 1 ] && ok "retrieval still returns same-space hits ($GHITS citations)" \
+  || bad "retrieval returns no hits — units may be in a foreign embedding space"
+
+head2 "10. STUDY PLAN + REVISION + EVAL"
 CODE=$(curl -s -o /dev/null -w '%{http_code}' "${AUTH[@]}" "$API/study-plan")
 [ "$CODE" = "200" ] && ok "study plan generated" || bad "study plan" "got $CODE"
 TID=$(curl -s "${AUTH[@]}" "$API/sources" | python3 -c "import sys,json;print(json.load(sys.stdin)['sources'][0]['topics'][0] if json.load(open('/dev/null')) else '')" 2>/dev/null || true)

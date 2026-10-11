@@ -90,8 +90,11 @@ setup (data does not survive a restart). `/api/health` reports which mode is liv
 | `BCRYPT_COST` | `12` | |
 | `GEMINI_API_KEY` | *(empty)* | Empty ⇒ offline deterministic provider |
 | `GEMINI_MODEL` | `gemini-2.0-flash` | |
-| `GROUNDING_SIMILARITY_THRESHOLD` | `0.17` | Calibrated — see below |
-| `GROUNDING_LEXICAL_THRESHOLD` | `0.55` | Calibrated — see below |
+| `GROUNDING_SIMILARITY_THRESHOLD_LOCAL` | `0.17` | Calibrated for the local hashing space |
+| `GROUNDING_LEXICAL_THRESHOLD_LOCAL` | `0.55` | Calibrated for the local hashing space |
+| `GROUNDING_SIMILARITY_THRESHOLD_GEMINI` | *(empty)* | **NOT CALIBRATED for Gemini.** Empty ⇒ the Gemini gate fails closed (lexical signal only). Calibrate with `scripts/calibrate_grounding.ts` and set it. |
+| `GROUNDING_LEXICAL_THRESHOLD_GEMINI` | *(empty)* | Set alongside the above |
+| `GROUNDING_SIMILARITY_THRESHOLD` | *(empty)* | Legacy single-value override; honoured only when the per-provider value is unset |
 
 ### `web/.env.local`
 
@@ -144,13 +147,25 @@ over-refuses legitimate questions or under-refuses unrelated ones. Question-word
 coverage separates far more cleanly (0.50–1.00 vs 0.00–0.67). The gate is the OR
 of the two.
 
-Thresholds were **calibrated, not guessed**:
+Thresholds are **per provider**, because the local hashing vectoriser and Gemini
+produce different similarity distributions — a single shared number cannot be
+correct for both. They were **calibrated, not guessed**:
 
 ```bash
 cd server && MONGODB_URI=<uri> npx tsx scripts/calibrate_grounding.ts
 ```
 
-Result: 10/10 in-material questions kept, 12/12 off-material declined.
+Result under the **local** provider: 10/10 in-material questions kept, 11/12
+off-material declined (the single accept is the deliberate
+quantum-chromodynamics paragraph the sample course plants as a refusal probe).
+
+> **Gemini thresholds are NOT CALIBRATED.** `GROUNDING_SIMILARITY_THRESHOLD_GEMINI`
+> ships empty on purpose. With no Gemini key available we could not measure the
+> real score distribution, and inventing a number would be fabricating evidence.
+> While unset, the Gemini gate **fails closed**: similarity alone can never admit
+> an answer, so only lexical coverage can. That is deliberately conservative and
+> will over-refuse until you calibrate. Run the script above with
+> `GEMINI_API_KEY` set and copy the printed values in.
 
 **2. A citation audit after generation.** Any citation pointing at a unit that was
 not actually retrieved is stripped before the answer reaches the user. The count

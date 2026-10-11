@@ -67,19 +67,59 @@ export function l2Normalize(vec: number[]): number[] {
   return vec.map((v) => v / norm);
 }
 
+/**
+ * Cosine similarity between two vectors that MUST live in the same space.
+ *
+ * This function deliberately THROWS on a length mismatch. The previous version
+ * compared only `min(a.length, b.length)` components, which silently produced
+ * meaningless numbers when a 768-dim Gemini vector met a 256-dim hashing vector
+ * — the dot product was over unrelated coordinates, so retrieval silently
+ * degraded instead of failing loudly. A length mismatch here is always a bug,
+ * and callers are expected to filter by dimension BEFORE calling.
+ *
+ * Use `sameSpace()` to check compatibility, or `safeCosineSimilarity` where a
+ * mismatched vector should be treated as "no similarity" rather than fatal.
+ */
 export function cosineSimilarity(a: number[] | undefined | null, b: number[] | undefined | null): number {
-  if (!a || !b || a.length === 0 || b.length === 0) return 0;
-  const len = Math.min(a.length, b.length);
+  if (!a || !b) throw new Error('cosineSimilarity: one vector is missing');
+  if (a.length === 0 || b.length === 0) return 0;
+  if (a.length !== b.length) {
+    throw new Error(
+      `cosineSimilarity: dimension mismatch (${a.length} vs ${b.length}). ` +
+        `Vectors from different embedding spaces are not comparable.`
+    );
+  }
   let dot = 0;
   let na = 0;
   let nb = 0;
-  for (let i = 0; i < len; i++) {
+  for (let i = 0; i < a.length; i++) {
     dot += a[i] * b[i];
     na += a[i] * a[i];
     nb += b[i] * b[i];
   }
   if (na === 0 || nb === 0) return 0;
   return dot / (Math.sqrt(na) * Math.sqrt(nb));
+}
+
+/** True when two vectors are safe to compare. */
+export function sameSpace(
+  a: number[] | undefined | null,
+  b: number[] | undefined | null
+): boolean {
+  return Boolean(a && b && a.length > 0 && a.length === b.length);
+}
+
+/**
+ * Like `cosineSimilarity`, but a dimension mismatch yields 0 ("no similarity")
+ * instead of throwing. For ranking loops over heterogeneous stored data where a
+ * single bad vector must not abort the whole request.
+ */
+export function safeCosineSimilarity(
+  a: number[] | undefined | null,
+  b: number[] | undefined | null
+): number {
+  if (!sameSpace(a, b)) return 0;
+  return cosineSimilarity(a as number[], b as number[]);
 }
 
 /** Stable, order-independent fingerprint for exact/near-exact question dedupe. */

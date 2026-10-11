@@ -18,6 +18,8 @@
  */
 import mongoose from 'mongoose';
 import { retrieveUnits, lexicalOverlap } from '../src/services/rag';
+import { getAIProvider } from '../src/ai/provider';
+import { activeSpace, groundingThresholds } from '../src/utils/vectorSpace';
 
 const IN_MATERIAL = [
   'What problem does the Clock replacement algorithm solve?',
@@ -68,6 +70,34 @@ async function main() {
   }
   await mongoose.connect(uri);
 
+  // FIX 1: calibration is only meaningful in the SAME space the units live in.
+  // Running this under the wrong provider produces a confident, wrong answer.
+  const ai = getAIProvider();
+  const space = activeSpace();
+  console.log(`provider: ${ai.name}  space: ${space.provider}/${space.dim}-dim`);
+  if (!process.env.GEMINI_API_KEY && space.provider === 'gemini') {
+    console.error('Provider is gemini but GEMINI_API_KEY is not set — cannot calibrate.');
+    process.exit(1);
+  }
+  const unitDims = new Set(
+    (await (await import('../src/models/Unit')).Unit.find({}).select('embeddingDim').lean())
+      .map((u: any) => Number(u.embeddingDim))
+      .filter(Boolean)
+  );
+  if (unitDims.size && (unitDims.size > 1 || !unitDims.has(space.dim))) {
+    console.error(
+      `Stored units are in ${[...unitDims].join(',')}-dim but the active space is ${space.dim}-dim.\n` +
+        `Run scripts/reembed.ts first.`
+    );
+    process.exit(1);
+  }
+  console.log(
+    `thresholds in use: ${JSON.stringify(groundingThresholds())}` +
+      (space.provider === 'gemini' && !process.env.GROUNDING_SIMILARITY_THRESHOLD_GEMINI
+        ? '  <-- GEMINI THRESHOLD UNCALIBRATED: the gate is currently failing closed'
+        : '')
+  );
+
   const { User } = await import('../src/models/User');
   const user = await User.findOne({ email: 'demo@studymind.app' }).lean();
   if (!user) {
@@ -107,6 +137,7 @@ async function main() {
   }
 
   console.log('\nbest operating point:', JSON.stringify(best));
+  console.log(`\nprovider=${space.provider}`);
   console.log(`\nat sim>=${best.S.toFixed(2)} OR lex>=${best.L.toFixed(2)}:`);
   for (const r of rows) {
     const g = r.sim >= best.S || r.lex >= best.L;

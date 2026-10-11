@@ -2,7 +2,12 @@ import { Unit } from '../models/Unit';
 import { Source } from '../models/Source';
 import { Topic } from '../models/Topic';
 import { getAIProvider } from '../ai/provider';
-import { cosineSimilarity, localEmbed } from '../utils/embedding';
+import { safeCosineSimilarity, localEmbed } from '../utils/embedding';
+import {
+  activeSpace,
+  groundingThresholds,
+  type VectorSpace,
+} from '../utils/vectorSpace';
 import { contentWords } from '../utils/text';
 import { env } from '../config/env';
 
@@ -82,34 +87,81 @@ export async function retrieveUnits(userId: string, scope: RetrievalScope): Prom
   if (scope.topicIds?.length) filter.topicIds = { $in: scope.topicIds };
 
   const units = await Unit.find(filter)
-    .select('text location embedding sourceId kind figureDescription')
+    .select('text location embedding embeddingProvider embeddingDim sourceId kind figureDescription')
     .lean();
 
   if (!units.length) return [];
 
-  const qVec = localEmbed(scope.question);
-  const scored = units.map((u: any) => ({
-    u,
-    sim: cosineSimilarity(qVec, u.embedding as number[]),
-  }));
+  // Embed the QUERY with the active provider — the same space the units were
+  // written in. Previously this used localEmbed() unconditionally, which
+  // compared a 256-dim hashing vector against 768-dim Gemini vectors and
+  // silently returned noise.
+  const ai = getAIProvider();
+  let space: VectorSpace = activeSpace();
+  let qVec: number[] | null = null;
+  try {
+    const [qv] = await ai.embed([scope.question]);
+    if (qv?.length) {
+      qVec = qv;
+      // Trust the returned vector's length over the configured default: it is
+      // the ground truth for what actually got stored.
+      space = { provider: space.provider, dim: qv.length };
+    }
+  } catch (err) {
+    console.warn('[retrieval] query embedding failed', (err as Error).message);
+  }
 
+  // Fall back to the local space only if the active provider IS local.
+  if (!qVec) {
+    if (space.provider !== 'local') {
+      console.warn('[retrieval] no query vector and active provider is not local; refusing to retrieve');
+      return [];
+    }
+    qVec = localEmbed(scope.question);
+    space = { provider: 'local', dim: qVec.length };
+  }
+
+  // NEVER compare across spaces. Units stored by a different provider (or with a
+  // different dimensionality) are excluded rather than scored.
+  const compatible = units.filter((u: any) => {
+    const vec = u.embedding as number[] | undefined;
+    if (!vec?.length) return false;
+    if (u.embeddingProvider && u.embeddingProvider !== space.provider) return false;
+    if (u.embeddingDim != null && Number(u.embeddingDim) !== space.dim) return false;
+    // Legacy units written before this field existed: accept only if the
+    // dimension already matches the active space.
+    return vec.length === space.dim;
+  });
+
+  const excluded = units.length - compatible.length;
+  if (excluded > 0) {
+    console.warn(
+      `[retrieval] excluded ${excluded}/${units.length} unit(s) not in the active ` +
+        `${space.provider}/${space.dim}-dim space. Run scripts/reembed.ts to migrate them.`
+    );
+  }
+
+  const scored = compatible.map((u: any) => ({
+    u,
+    sim: safeCosineSimilarity(qVec, u.embedding as number[]),
+  }));
   scored.sort((a, b) => b.sim - a.sim);
 
   const top = scored.slice(0, topK);
-  const sourceIds = [...new Set(top.map((s) => String(s.u.sourceId)))];
+  const sourceIds = [...new Set(top.map((s: any) => String(s.u.sourceId)))];
   const sources = await Source.find({ _id: { $in: sourceIds } })
     .select('title type')
     .lean();
-  const sourceMap = new Map(sources.map((s) => [String(s._id), s]));
+  const sourceMap = new Map(sources.map((s: any) => [String(s._id), s]));
 
-  return top.map(({ u, sim }) => {
+  return top.map(({ u, sim }: any) => {
     const src = sourceMap.get(String(u.sourceId));
     return {
       unitId: String(u._id),
       sourceId: String(u.sourceId),
-      text: (u as any).figureDescription ?? u.text,
+      text: (u.figureDescription ?? u.text) as string,
       similarity: Number(sim.toFixed(4)),
-      location: (u as any).location ?? {},
+      location: u.location ?? {},
       kind: u.kind,
       sourceTitle: src?.title ?? 'Unknown source',
       sourceType: src?.type ?? 'text',
@@ -117,19 +169,6 @@ export async function retrieveUnits(userId: string, scope: RetrievalScope): Prom
   });
 }
 
-/**
- * Lexical coverage of the question by the top retrieved excerpts.
- *
- * Cosine similarity alone is not a sufficient grounding gate. Measured against
- * the seeded corpus, top-1 cosine for in-material questions ranged 0.10-0.51
- * while off-material questions ranged 0.02-0.17 — the distributions overlap, so
- * a single cosine threshold either over-refuses legitimate questions
- * ("Explain set-associative caching" scored 0.116) or under-refuses unrelated
- * ones. Question-word coverage separates far more cleanly (0.50-1.00 vs
- * 0.00-0.67), so the gate is the OR of the two signals.
- *
- * Calibration is reproducible: see server/scripts/calibrate_grounding.ts.
- */
 export function lexicalOverlap(question: string, hits: RetrievedUnit[]): number {
   const q = new Set(contentWords(question));
   if (!q.size || !hits.length) return 0;
@@ -141,7 +180,10 @@ export function lexicalOverlap(question: string, hits: RetrievedUnit[]): number 
 
 /** Grounding decision: either signal is sufficient to attempt an answer. */
 export function isGrounded(topSimilarity: number, overlap: number): boolean {
-  return topSimilarity >= env.GROUNDING_SIMILARITY_THRESHOLD || overlap >= env.GROUNDING_LEXICAL_THRESHOLD;
+  const t = groundingThresholds();
+  // With an uncalibrated Gemini space the similarity threshold is +Infinity, so
+  // only the lexical signal can pass. Failing closed is the safe direction.
+  return topSimilarity >= t.similarity || overlap >= t.lexical;
 }
 
 /* --------------------------- answer synthesis -------------------------- */

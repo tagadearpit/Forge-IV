@@ -25,6 +25,12 @@ const UnitSchema = new Schema(
     /** Speaker notes recovered from a slide deck, kept separate from slide body text. */
     speakerNotes: { type: String, default: null },
     embedding: { type: [Number], default: undefined, index: true },
+    /**
+     * Which embedding space `embedding` lives in. Vectors from different spaces
+     * are NOT comparable, so retrieval filters on this before scoring.
+     */
+    embeddingProvider: { type: String, enum: ['gemini', 'local'], default: null, index: true },
+    embeddingDim: { type: Number, default: null },
     topicIds: [{ type: Schema.Types.ObjectId, ref: 'Topic', index: true }],
     charStart: { type: Number, default: null },
     charEnd: { type: Number, default: null },
