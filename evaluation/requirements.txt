@@ -1,0 +1,9 @@
+# Optional. run_eval.py works without any of these installed — it falls back to
+# a deterministic local metric implementation and labels the output
+# framework="local-exact" so the two are never confused.
+#
+# Install these to get RAGAS's LLM-judge scores instead:
+#   pip install -r evaluation/requirements.txt
+
+ragas>=0.1.9
+datasets>=2.18.0

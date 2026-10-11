@@ -1,0 +1,15 @@
+{
+  "metrics": {
+    "faithfulness": 0.4299,
+    "answer_relevancy": 0.415,
+    "context_precision": 0.1429,
+    "context_recall": 1,
+    "citation_accuracy": 0.325,
+    "refusal_accuracy": 0,
+    "evaluated": 40,
+    "off_material_tested": 0,
+    "off_material_declined": 0,
+    "retrieval_failures": 0
+  },
+  "createdAt": "2026-10-11T06:23:33.623Z"
+}

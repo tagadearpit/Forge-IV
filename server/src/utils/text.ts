@@ -105,9 +105,11 @@ export function chunkText(
 
     if (end >= clean.length) break;
     // Step forward by the window size minus the overlap tail.
-    const next = Math.max(end - overlapChars, cursor + 1);
-    cursor = next;
-    // Align to a non-whitespace character so we never start mid-token.
+    cursor = Math.max(end - overlapChars, cursor + 1);
+    // Snap FORWARD to the next word boundary. Skipping whitespace instead
+    // lands mid-token ("...t|he offset..."), which corrupts the first word of
+    // every subsequent chunk — visible in generated answers.
+    while (cursor < clean.length && !/\s/.test(clean[cursor])) cursor++;
     while (cursor < clean.length && /\s/.test(clean[cursor])) cursor++;
   }
 

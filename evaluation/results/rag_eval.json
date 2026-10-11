@@ -1,0 +1,432 @@
+{
+  "framework": "local-exact",
+  "api": "http://localhost:3001",
+  "provider": "local",
+  "testset": "v1",
+  "testset_size": 74,
+  "duration_sec": 101.8,
+  "metrics": {
+    "faithfulness": 1.0,
+    "answer_relevancy": 0.4358,
+    "context_precision": 0.3333,
+    "context_recall": 1.0,
+    "citation_accuracy": 0.3333,
+    "refusal_accuracy": 1.0,
+    "evaluated_in_material": 20,
+    "off_material_tested": 14,
+    "off_material_evaluated": 14,
+    "off_material_declined": 14,
+    "off_material_errors": 0,
+    "in_material_errors": 0,
+    "citation_precision_micro": 0.3333
+  },
+  "notes": "Faithfulness/relevancy use a deterministic lexical measure. This is a conservative lower bound: an LLM judge would credit paraphrase that token overlap cannot. Citation precision and refusal accuracy are exact.",
+  "perEntry": [
+    {
+      "question": "According to your material, what does this statement say: \"CS 241 \u2014 Systems Programming Lecture 7: Memory Management, Caching and Concurrency This handout accompanies Lecture 7.\"?",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90d"
+      ],
+      "retrievedUnitIds": [
+        "6acb29f8af78efff662fc90d",
+        "6acb29f8af78efff662fc910",
+        "6acb29f8af78efff662fc911"
+      ],
+      "groundingStatus": "full",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.4948,
+      "context_precision": 0.3333,
+      "context_recall": 1.0
+    },
+    {
+      "question": "In the uploaded material, what is described regarding 241 systems programming lecture?",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90d"
+      ],
+      "retrievedUnitIds": [
+        "6acb29f8af78efff662fc90d",
+        "6acb29f8af78efff662fc913",
+        "6acb29f8af78efff662fc90e"
+      ],
+      "groundingStatus": "full",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.3103,
+      "context_precision": 0.3333,
+      "context_recall": 1.0
+    },
+    {
+      "question": "According to your material, what does this statement say: \"It covers the virtual memory subsystem, the cache hierarchy, and the concurrency primitives that the rest of the course \"?",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90d"
+      ],
+      "retrievedUnitIds": [
+        "6acb29f8af78efff662fc90d",
+        "6acb29f8af78efff662fc910",
+        "6acb29f8af78efff662fc913"
+      ],
+      "groundingStatus": "full",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.4627,
+      "context_precision": 0.3333,
+      "context_recall": 1.0
+    },
+    {
+      "question": "In the uploaded material, what is described regarding covers virtual memory subsystem?",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90d"
+      ],
+      "retrievedUnitIds": [
+        "6acb29f8af78efff662fc90d",
+        "6acb29f8af78efff662fc913",
+        "6acb29f8af78efff662fc910"
+      ],
+      "groundingStatus": "full",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.4091,
+      "context_precision": 0.3333,
+      "context_recall": 1.0
+    },
+    {
+      "question": "According to your material, what does this statement say: \"THE VIRTUAL MEMORY SUBSYSTEM Every process sees its own contiguous address space, but the physical memory behind it is f\"?",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90d"
+      ],
+      "retrievedUnitIds": [
+        "6acb29f8af78efff662fc90d",
+        "6acb29f8af78efff662fc913",
+        "6acb29f8af78efff662fc90e"
+      ],
+      "groundingStatus": "full",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.541,
+      "context_precision": 0.3333,
+      "context_recall": 1.0
+    },
+    {
+      "question": "In the uploaded material, what is described regarding virtual memory subsystem every?",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90d"
+      ],
+      "retrievedUnitIds": [
+        "6acb29f8af78efff662fc90d",
+        "6acb29f8af78efff662fc913",
+        "6acb29f8af78efff662fc910"
+      ],
+      "groundingStatus": "full",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.3654,
+      "context_precision": 0.3333,
+      "context_recall": 1.0
+    },
+    {
+      "question": "According to your material, what does this statement say: \"It provides three guarantees: isolation between processes, the illusion of a large contiguous space, and the ability to \"?",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90d"
+      ],
+      "retrievedUnitIds": [
+        "6acb29f8af78efff662fc90d",
+        "6acb29f8af78efff662fc913",
+        "6acb29f8af78efff662fc912"
+      ],
+      "groundingStatus": "full",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.3958,
+      "context_precision": 0.3333,
+      "context_recall": 1.0
+    },
+    {
+      "question": "According to your material, what does this statement say: \"On a 4 KiB page system with a 48-bit virtual address, the low 12 bits are the page offset and the upper 36 bits are the \"?",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90d"
+      ],
+      "retrievedUnitIds": [
+        "6acb29f8af78efff662fc90d",
+        "6acb29f8af78efff662fc90e",
+        "6acb29f8af78efff662fc90f"
+      ],
+      "groundingStatus": "full",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.6412,
+      "context_precision": 0.3333,
+      "context_recall": 1.0
+    },
+    {
+      "question": "According to your material, what does this statement say: \"The MMU consults the page table to translate the virtual page number into a physical frame number, then concatenates the\"?",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90e"
+      ],
+      "retrievedUnitIds": [
+        "6acb29f8af78efff662fc90e",
+        "6acb29f8af78efff662fc90d",
+        "6acb29f8af78efff662fc90f"
+      ],
+      "groundingStatus": "full",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.8413,
+      "context_precision": 0.3333,
+      "context_recall": 1.0
+    },
+    {
+      "question": "In the uploaded material, what is described regarding mmu consults page table?",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90e"
+      ],
+      "retrievedUnitIds": [
+        "6acb29f8af78efff662fc90f",
+        "6acb29f8af78efff662fc90e",
+        "6acb29f8af78efff662fc90d"
+      ],
+      "groundingStatus": "full",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.3968,
+      "context_precision": 0.3333,
+      "context_recall": 1.0
+    },
+    {
+      "question": "According to your material, what does this statement say: \"The page table itself is usually too large to keep resident, so modern systems use multi-level page tables.\"?",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90e"
+      ],
+      "retrievedUnitIds": [
+        "6acb29f8af78efff662fc90e",
+        "6acb29f8af78efff662fc90f",
+        "6acb29f8af78efff662fc90d"
+      ],
+      "groundingStatus": "full",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.4414,
+      "context_precision": 0.3333,
+      "context_recall": 1.0
+    },
+    {
+      "question": "In the uploaded material, what is described regarding page table itself usually?",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90e"
+      ],
+      "retrievedUnitIds": [
+        "6acb29f8af78efff662fc90e",
+        "6acb29f8af78efff662fc90f",
+        "6acb29f8af78efff662fc90d"
+      ],
+      "groundingStatus": "full",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.3667,
+      "context_precision": 0.3333,
+      "context_recall": 1.0
+    },
+    {
+      "question": "According to your material, what does this statement say: \"A four-level table on x86-64 means three of the four levels are only allocated when actually used.\"?",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90e"
+      ],
+      "retrievedUnitIds": [
+        "6acb29f8af78efff662fc90e",
+        "6acb29f8af78efff662fc90f",
+        "6acb29f8af78efff662fc910"
+      ],
+      "groundingStatus": "full",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.4151,
+      "context_precision": 0.3333,
+      "context_recall": 1.0
+    },
+    {
+      "question": "In the uploaded material, what is described regarding four-level table x86-64 means?",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90e"
+      ],
+      "retrievedUnitIds": [
+        "6acb29f8af78efff662fc90e",
+        "6acb29f8af78efff662fc913",
+        "6acb29f8af78efff662fc90f"
+      ],
+      "groundingStatus": "full",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.2857,
+      "context_precision": 0.3333,
+      "context_recall": 1.0
+    },
+    {
+      "question": "According to your material, what does this statement say: \"Programs with a small working set therefore pay a very small translation cost, because they never allocate the upper lev\"?",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90e"
+      ],
+      "retrievedUnitIds": [
+        "6acb29f8af78efff662fc90e",
+        "6acb29f8af78efff662fc90f",
+        "6acb29f8af78efff662fc911"
+      ],
+      "groundingStatus": "full",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.3962,
+      "context_precision": 0.3333,
+      "context_recall": 1.0
+    },
+    {
+      "question": "According to your material, what does this statement say: \"The TLB (translation lookaside buffer) is a small fully-associative cache sitting in the MMU that holds recent virtual-t\"?",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90e"
+      ],
+      "retrievedUnitIds": [
+        "6acb29f8af78efff662fc90e",
+        "6acb29f8af78efff662fc90f",
+        "6acb29f8af78efff662fc90d"
+      ],
+      "groundingStatus": "full",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.4186,
+      "context_precision": 0.3333,
+      "context_recall": 1.0
+    },
+    {
+      "question": "According to your material, what does this statement say: \"A TLB miss costs roughly an order of magnitude more than a cache hit, which is why working-set size matters more than ra\"?",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90f"
+      ],
+      "retrievedUnitIds": [
+        "6acb29f8af78efff662fc90e",
+        "6acb29f8af78efff662fc90f",
+        "6acb29f8af78efff662fc910"
+      ],
+      "groundingStatus": "full",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.5641,
+      "context_precision": 0.3333,
+      "context_recall": 1.0
+    },
+    {
+      "question": "In the uploaded material, what is described regarding tlb miss costs roughly?",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90f"
+      ],
+      "retrievedUnitIds": [
+        "6acb29f8af78efff662fc90e",
+        "6acb29f8af78efff662fc90f",
+        "6acb29f8af78efff662fc913"
+      ],
+      "groundingStatus": "full",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.2308,
+      "context_precision": 0.3333,
+      "context_recall": 1.0
+    },
+    {
+      "question": "According to your material, what does this statement say: \"PAGE FAULTS AND REPLACEMENT A page fault occurs when a translation is not valid in the page table.\"?",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90f"
+      ],
+      "retrievedUnitIds": [
+        "6acb29f8af78efff662fc90f",
+        "6acb29f8af78efff662fc90e",
+        "6acb29f8af78efff662fc90d"
+      ],
+      "groundingStatus": "full",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.4211,
+      "context_precision": 0.3333,
+      "context_recall": 1.0
+    },
+    {
+      "question": "In the uploaded material, what is described regarding page faults replacement page?",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90f"
+      ],
+      "retrievedUnitIds": [
+        "6acb29f8af78efff662fc90f",
+        "6acb29f8af78efff662fc90d",
+        "6acb29f8af78efff662fc90e"
+      ],
+      "groundingStatus": "full",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.3178,
+      "context_precision": 0.3333,
+      "context_recall": 1.0
+    }
+  ],
+  "offMaterial": [
+    {
+      "question": "What is the capital city of France?",
+      "declined": true,
+      "groundingStatus": "outside_material",
+      "citations": 0
+    },
+    {
+      "question": "How do I bake a sourdough loaf at home?",
+      "declined": true,
+      "groundingStatus": "outside_material",
+      "citations": 0
+    },
+    {
+      "question": "What is the mass of a proton in kilograms?",
+      "declined": true,
+      "groundingStatus": "outside_material",
+      "citations": 0
+    },
+    {
+      "question": "Who won the FIFA World Cup in 2022?",
+      "declined": true,
+      "groundingStatus": "outside_material",
+      "citations": 0
+    },
+    {
+      "question": "Explain how a diesel engine combusts fuel.",
+      "declined": true,
+      "groundingStatus": "outside_material",
+      "citations": 0
+    },
+    {
+      "question": "What is the population of Tokyo?",
+      "declined": true,
+      "groundingStatus": "outside_material",
+      "citations": 0
+    },
+    {
+      "question": "Recommend a good detective novel.",
+      "declined": true,
+      "groundingStatus": "outside_material",
+      "citations": 0
+    },
+    {
+      "question": "How do I train for a half marathon?",
+      "declined": true,
+      "groundingStatus": "outside_material",
+      "citations": 0
+    },
+    {
+      "question": "What is the boiling point of water at sea level?",
+      "declined": true,
+      "groundingStatus": "outside_material",
+      "citations": 0
+    },
+    {
+      "question": "Who wrote the Ramayana?",
+      "declined": true,
+      "groundingStatus": "outside_material",
+      "citations": 0
+    },
+    {
+      "question": "How does photosynthesis convert sunlight?",
+      "declined": true,
+      "groundingStatus": "outside_material",
+      "citations": 0
+    },
+    {
+      "question": "What currency does Japan use?",
+      "declined": true,
+      "groundingStatus": "outside_material",
+      "citations": 0
+    },
+    {
+      "question": "Explain the rules of cricket test matches.",
+      "declined": true,
+      "groundingStatus": "outside_material",
+      "citations": 0
+    },
+    {
+      "question": "How do vaccines create immunity?",
+      "declined": true,
+      "groundingStatus": "outside_material",
+      "citations": 0
+    }
+  ]
+}

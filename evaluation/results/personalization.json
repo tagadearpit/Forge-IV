@@ -1,0 +1,945 @@
+{
+  "config": {
+    "sessions": 6,
+    "questions_per_session": 5,
+    "trials_per_condition": 5,
+    "seed": 7,
+    "bkt": {
+      "pInit": 0.1,
+      "pTransit": 0.12,
+      "pSlip": 0.1,
+      "pGuess": 0.2
+    },
+    "zpd": [
+      0.3,
+      0.7
+    ]
+  },
+  "profiles": {
+    "strong": "already knows most of it",
+    "weak": "struggles across the board",
+    "mixed": "strong early topics, weak later",
+    "beginner_err": "specific errors on later topics"
+  },
+  "summary": {
+    "adaptive": {
+      "strong": {
+        "trials": 5,
+        "mean_mastery_gain": 0.4969,
+        "stdev_mastery_gain": 0.1486,
+        "mean_final_mastery": 0.9162,
+        "mean_repetition_rate": 0.269,
+        "mean_topics_touched": 4.0,
+        "median_sessions_to_70pct": 3
+      },
+      "weak": {
+        "trials": 5,
+        "mean_mastery_gain": 0.4183,
+        "stdev_mastery_gain": 0.1731,
+        "mean_final_mastery": 0.6372,
+        "mean_repetition_rate": 0.4,
+        "mean_topics_touched": 4.0,
+        "median_sessions_to_70pct": 6
+      },
+      "mixed": {
+        "trials": 5,
+        "mean_mastery_gain": 0.4041,
+        "stdev_mastery_gain": 0.1195,
+        "mean_final_mastery": 0.783,
+        "mean_repetition_rate": 0.4207,
+        "mean_topics_touched": 4.0,
+        "median_sessions_to_70pct": 5
+      },
+      "beginner_err": {
+        "trials": 5,
+        "mean_mastery_gain": 0.3033,
+        "stdev_mastery_gain": 0.0852,
+        "mean_final_mastery": 0.5383,
+        "mean_repetition_rate": 0.2345,
+        "mean_topics_touched": 4.0,
+        "median_sessions_to_70pct": null
+      }
+    },
+    "random": {
+      "strong": {
+        "trials": 5,
+        "mean_mastery_gain": 0.4481,
+        "stdev_mastery_gain": 0.0353,
+        "mean_final_mastery": 0.8192,
+        "mean_repetition_rate": 0.1793,
+        "mean_topics_touched": 4.0,
+        "median_sessions_to_70pct": 3
+      },
+      "weak": {
+        "trials": 5,
+        "mean_mastery_gain": 0.1818,
+        "stdev_mastery_gain": 0.1358,
+        "mean_final_mastery": 0.382,
+        "mean_repetition_rate": 0.1931,
+        "mean_topics_touched": 4.0,
+        "median_sessions_to_70pct": null
+      },
+      "mixed": {
+        "trials": 5,
+        "mean_mastery_gain": 0.3515,
+        "stdev_mastery_gain": 0.0811,
+        "mean_final_mastery": 0.6267,
+        "mean_repetition_rate": 0.2414,
+        "mean_topics_touched": 4.0,
+        "median_sessions_to_70pct": 6
+      },
+      "beginner_err": {
+        "trials": 5,
+        "mean_mastery_gain": 0.0762,
+        "stdev_mastery_gain": 0.2318,
+        "mean_final_mastery": 0.3783,
+        "mean_repetition_rate": 0.2345,
+        "mean_topics_touched": 4.0,
+        "median_sessions_to_70pct": null
+      }
+    }
+  },
+  "runs": [
+    {
+      "profile": "strong",
+      "policy": "adaptive",
+      "sessions": 6,
+      "first_session_mastery": 0.5072,
+      "final_mastery": 0.9753,
+      "mastery_gain": 0.4681,
+      "final_mean_mastery": 0.9753,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.2069,
+      "sessions_to_70pct": 2,
+      "trace": [
+        0.5072,
+        0.7868,
+        0.7698,
+        0.9483,
+        0.9762,
+        0.9753
+      ]
+    },
+    {
+      "profile": "strong",
+      "policy": "adaptive",
+      "sessions": 6,
+      "first_session_mastery": 0.2875,
+      "final_mastery": 0.9882,
+      "mastery_gain": 0.7007,
+      "final_mean_mastery": 0.9882,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.1379,
+      "sessions_to_70pct": 3,
+      "trace": [
+        0.2875,
+        0.6378,
+        0.7981,
+        0.9133,
+        0.9303,
+        0.9882
+      ]
+    },
+    {
+      "profile": "strong",
+      "policy": "adaptive",
+      "sessions": 6,
+      "first_session_mastery": 0.5072,
+      "final_mastery": 0.8111,
+      "mastery_gain": 0.3038,
+      "final_mean_mastery": 0.8111,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.2069,
+      "sessions_to_70pct": 3,
+      "trace": [
+        0.5072,
+        0.5742,
+        0.8213,
+        0.9297,
+        0.9772,
+        0.8111
+      ]
+    },
+    {
+      "profile": "strong",
+      "policy": "adaptive",
+      "sessions": 6,
+      "first_session_mastery": 0.3578,
+      "final_mastery": 0.9288,
+      "mastery_gain": 0.571,
+      "final_mean_mastery": 0.9288,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.3448,
+      "sessions_to_70pct": 2,
+      "trace": [
+        0.3578,
+        0.8106,
+        0.8466,
+        0.9515,
+        0.9839,
+        0.9288
+      ]
+    },
+    {
+      "profile": "strong",
+      "policy": "adaptive",
+      "sessions": 6,
+      "first_session_mastery": 0.4369,
+      "final_mastery": 0.8777,
+      "mastery_gain": 0.4408,
+      "final_mean_mastery": 0.8777,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.4483,
+      "sessions_to_70pct": 3,
+      "trace": [
+        0.4369,
+        0.6288,
+        0.7579,
+        0.903,
+        0.9677,
+        0.8777
+      ]
+    },
+    {
+      "profile": "strong",
+      "policy": "random",
+      "sessions": 6,
+      "first_session_mastery": 0.4525,
+      "final_mastery": 0.9245,
+      "mastery_gain": 0.472,
+      "final_mean_mastery": 0.9245,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.2069,
+      "sessions_to_70pct": 3,
+      "trace": [
+        0.4525,
+        0.6191,
+        0.9221,
+        0.9687,
+        0.9101,
+        0.9245
+      ]
+    },
+    {
+      "profile": "strong",
+      "policy": "random",
+      "sessions": 6,
+      "first_session_mastery": 0.3305,
+      "final_mastery": 0.7709,
+      "mastery_gain": 0.4404,
+      "final_mean_mastery": 0.7709,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.1724,
+      "sessions_to_70pct": 4,
+      "trace": [
+        0.3305,
+        0.5099,
+        0.569,
+        0.7303,
+        0.7314,
+        0.7709
+      ]
+    },
+    {
+      "profile": "strong",
+      "policy": "random",
+      "sessions": 6,
+      "first_session_mastery": 0.2955,
+      "final_mastery": 0.7074,
+      "mastery_gain": 0.4119,
+      "final_mean_mastery": 0.7074,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.2414,
+      "sessions_to_70pct": 6,
+      "trace": [
+        0.2955,
+        0.4072,
+        0.6898,
+        0.6739,
+        0.6968,
+        0.7074
+      ]
+    },
+    {
+      "profile": "strong",
+      "policy": "random",
+      "sessions": 6,
+      "first_session_mastery": 0.445,
+      "final_mastery": 0.8656,
+      "mastery_gain": 0.4206,
+      "final_mean_mastery": 0.8656,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.1379,
+      "sessions_to_70pct": 3,
+      "trace": [
+        0.445,
+        0.603,
+        0.8276,
+        0.7864,
+        0.9462,
+        0.8656
+      ]
+    },
+    {
+      "profile": "strong",
+      "policy": "random",
+      "sessions": 6,
+      "first_session_mastery": 0.3317,
+      "final_mastery": 0.8276,
+      "mastery_gain": 0.4958,
+      "final_mean_mastery": 0.8276,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.1379,
+      "sessions_to_70pct": 3,
+      "trace": [
+        0.3317,
+        0.6513,
+        0.7301,
+        0.5375,
+        0.6831,
+        0.8276
+      ]
+    },
+    {
+      "profile": "weak",
+      "policy": "adaptive",
+      "sessions": 6,
+      "first_session_mastery": 0.4369,
+      "final_mastery": 0.6718,
+      "mastery_gain": 0.2349,
+      "final_mean_mastery": 0.6718,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.4483,
+      "sessions_to_70pct": null,
+      "trace": [
+        0.4369,
+        0.3271,
+        0.5835,
+        0.5941,
+        0.6542,
+        0.6718
+      ]
+    },
+    {
+      "profile": "weak",
+      "policy": "adaptive",
+      "sessions": 6,
+      "first_session_mastery": 0.1468,
+      "final_mastery": 0.6779,
+      "mastery_gain": 0.5311,
+      "final_mean_mastery": 0.6779,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.4138,
+      "sessions_to_70pct": null,
+      "trace": [
+        0.1468,
+        0.3241,
+        0.4308,
+        0.5039,
+        0.5044,
+        0.6779
+      ]
+    },
+    {
+      "profile": "weak",
+      "policy": "adaptive",
+      "sessions": 6,
+      "first_session_mastery": 0.1468,
+      "final_mastery": 0.4492,
+      "mastery_gain": 0.3023,
+      "final_mean_mastery": 0.4492,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.3793,
+      "sessions_to_70pct": null,
+      "trace": [
+        0.1468,
+        0.2559,
+        0.1954,
+        0.2124,
+        0.2964,
+        0.4492
+      ]
+    },
+    {
+      "profile": "weak",
+      "policy": "adaptive",
+      "sessions": 6,
+      "first_session_mastery": 0.2172,
+      "final_mastery": 0.8749,
+      "mastery_gain": 0.6577,
+      "final_mean_mastery": 0.8749,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.4483,
+      "sessions_to_70pct": 6,
+      "trace": [
+        0.2172,
+        0.3378,
+        0.4983,
+        0.5041,
+        0.6778,
+        0.8749
+      ]
+    },
+    {
+      "profile": "weak",
+      "policy": "adaptive",
+      "sessions": 6,
+      "first_session_mastery": 0.1468,
+      "final_mastery": 0.5123,
+      "mastery_gain": 0.3655,
+      "final_mean_mastery": 0.5123,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.3103,
+      "sessions_to_70pct": null,
+      "trace": [
+        0.1468,
+        0.3241,
+        0.3435,
+        0.597,
+        0.5443,
+        0.5123
+      ]
+    },
+    {
+      "profile": "weak",
+      "policy": "random",
+      "sessions": 6,
+      "first_session_mastery": 0.298,
+      "final_mastery": 0.3252,
+      "mastery_gain": 0.0272,
+      "final_mean_mastery": 0.3252,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.3103,
+      "sessions_to_70pct": null,
+      "trace": [
+        0.298,
+        0.3095,
+        0.3972,
+        0.3059,
+        0.2566,
+        0.3252
+      ]
+    },
+    {
+      "profile": "weak",
+      "policy": "random",
+      "sessions": 6,
+      "first_session_mastery": 0.2185,
+      "final_mastery": 0.4827,
+      "mastery_gain": 0.2642,
+      "final_mean_mastery": 0.4827,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.1724,
+      "sessions_to_70pct": null,
+      "trace": [
+        0.2185,
+        0.3267,
+        0.161,
+        0.2616,
+        0.538,
+        0.4827
+      ]
+    },
+    {
+      "profile": "weak",
+      "policy": "random",
+      "sessions": 6,
+      "first_session_mastery": 0.2252,
+      "final_mastery": 0.5178,
+      "mastery_gain": 0.2926,
+      "final_mean_mastery": 0.5178,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.1379,
+      "sessions_to_70pct": null,
+      "trace": [
+        0.2252,
+        0.4698,
+        0.2742,
+        0.2833,
+        0.3916,
+        0.5178
+      ]
+    },
+    {
+      "profile": "weak",
+      "policy": "random",
+      "sessions": 6,
+      "first_session_mastery": 0.1262,
+      "final_mastery": 0.4113,
+      "mastery_gain": 0.2851,
+      "final_mean_mastery": 0.4113,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.2414,
+      "sessions_to_70pct": null,
+      "trace": [
+        0.1262,
+        0.1546,
+        0.1665,
+        0.2294,
+        0.312,
+        0.4113
+      ]
+    },
+    {
+      "profile": "weak",
+      "policy": "random",
+      "sessions": 6,
+      "first_session_mastery": 0.1331,
+      "final_mastery": 0.173,
+      "mastery_gain": 0.0399,
+      "final_mean_mastery": 0.173,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.1034,
+      "sessions_to_70pct": null,
+      "trace": [
+        0.1331,
+        0.2413,
+        0.2737,
+        0.1924,
+        0.305,
+        0.173
+      ]
+    },
+    {
+      "profile": "mixed",
+      "policy": "adaptive",
+      "sessions": 6,
+      "first_session_mastery": 0.5072,
+      "final_mastery": 0.9286,
+      "mastery_gain": 0.4213,
+      "final_mean_mastery": 0.9286,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.2414,
+      "sessions_to_70pct": 2,
+      "trace": [
+        0.5072,
+        0.7171,
+        0.7057,
+        0.9537,
+        0.9759,
+        0.9286
+      ]
+    },
+    {
+      "profile": "mixed",
+      "policy": "adaptive",
+      "sessions": 6,
+      "first_session_mastery": 0.3666,
+      "final_mastery": 0.7689,
+      "mastery_gain": 0.4023,
+      "final_mean_mastery": 0.7689,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.4828,
+      "sessions_to_70pct": 3,
+      "trace": [
+        0.3666,
+        0.6367,
+        0.8135,
+        0.9262,
+        0.8377,
+        0.7689
+      ]
+    },
+    {
+      "profile": "mixed",
+      "policy": "adaptive",
+      "sessions": 6,
+      "first_session_mastery": 0.2875,
+      "final_mastery": 0.7492,
+      "mastery_gain": 0.4617,
+      "final_mean_mastery": 0.7492,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.3448,
+      "sessions_to_70pct": 6,
+      "trace": [
+        0.2875,
+        0.1966,
+        0.4993,
+        0.6061,
+        0.5782,
+        0.7492
+      ]
+    },
+    {
+      "profile": "mixed",
+      "policy": "adaptive",
+      "sessions": 6,
+      "first_session_mastery": 0.2963,
+      "final_mastery": 0.8233,
+      "mastery_gain": 0.527,
+      "final_mean_mastery": 0.8233,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.4138,
+      "sessions_to_70pct": 5,
+      "trace": [
+        0.2963,
+        0.5598,
+        0.6657,
+        0.6687,
+        0.8157,
+        0.8233
+      ]
+    },
+    {
+      "profile": "mixed",
+      "policy": "adaptive",
+      "sessions": 6,
+      "first_session_mastery": 0.4369,
+      "final_mastery": 0.6451,
+      "mastery_gain": 0.2082,
+      "final_mean_mastery": 0.6451,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.6207,
+      "sessions_to_70pct": null,
+      "trace": [
+        0.4369,
+        0.626,
+        0.6265,
+        0.6261,
+        0.6451,
+        0.6451
+      ]
+    },
+    {
+      "profile": "mixed",
+      "policy": "random",
+      "sessions": 6,
+      "first_session_mastery": 0.2102,
+      "final_mastery": 0.6722,
+      "mastery_gain": 0.462,
+      "final_mean_mastery": 0.6722,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.3793,
+      "sessions_to_70pct": null,
+      "trace": [
+        0.2102,
+        0.2908,
+        0.3882,
+        0.5062,
+        0.5348,
+        0.6722
+      ]
+    },
+    {
+      "profile": "mixed",
+      "policy": "random",
+      "sessions": 6,
+      "first_session_mastery": 0.2828,
+      "final_mastery": 0.6244,
+      "mastery_gain": 0.3416,
+      "final_mean_mastery": 0.6244,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.1724,
+      "sessions_to_70pct": 5,
+      "trace": [
+        0.2828,
+        0.5328,
+        0.4385,
+        0.5514,
+        0.732,
+        0.6244
+      ]
+    },
+    {
+      "profile": "mixed",
+      "policy": "random",
+      "sessions": 6,
+      "first_session_mastery": 0.3388,
+      "final_mastery": 0.7351,
+      "mastery_gain": 0.3963,
+      "final_mean_mastery": 0.7351,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.2069,
+      "sessions_to_70pct": 6,
+      "trace": [
+        0.3388,
+        0.452,
+        0.4021,
+        0.45,
+        0.6276,
+        0.7351
+      ]
+    },
+    {
+      "profile": "mixed",
+      "policy": "random",
+      "sessions": 6,
+      "first_session_mastery": 0.3473,
+      "final_mastery": 0.5991,
+      "mastery_gain": 0.2518,
+      "final_mean_mastery": 0.5991,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.2414,
+      "sessions_to_70pct": null,
+      "trace": [
+        0.3473,
+        0.342,
+        0.6328,
+        0.6566,
+        0.6585,
+        0.5991
+      ]
+    },
+    {
+      "profile": "mixed",
+      "policy": "random",
+      "sessions": 6,
+      "first_session_mastery": 0.1965,
+      "final_mastery": 0.5025,
+      "mastery_gain": 0.306,
+      "final_mean_mastery": 0.5025,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.2069,
+      "sessions_to_70pct": null,
+      "trace": [
+        0.1965,
+        0.5135,
+        0.5455,
+        0.3663,
+        0.467,
+        0.5025
+      ]
+    },
+    {
+      "profile": "beginner_err",
+      "policy": "adaptive",
+      "sessions": 6,
+      "first_session_mastery": 0.2185,
+      "final_mastery": 0.6195,
+      "mastery_gain": 0.401,
+      "final_mean_mastery": 0.6195,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.0345,
+      "sessions_to_70pct": null,
+      "trace": [
+        0.2185,
+        0.3095,
+        0.3288,
+        0.3289,
+        0.3289,
+        0.6195
+      ]
+    },
+    {
+      "profile": "beginner_err",
+      "policy": "adaptive",
+      "sessions": 6,
+      "first_session_mastery": 0.2963,
+      "final_mastery": 0.4931,
+      "mastery_gain": 0.1968,
+      "final_mean_mastery": 0.4931,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.3448,
+      "sessions_to_70pct": null,
+      "trace": [
+        0.2963,
+        0.387,
+        0.319,
+        0.5121,
+        0.4931,
+        0.4931
+      ]
+    },
+    {
+      "profile": "beginner_err",
+      "policy": "adaptive",
+      "sessions": 6,
+      "first_session_mastery": 0.1468,
+      "final_mastery": 0.4568,
+      "mastery_gain": 0.3099,
+      "final_mean_mastery": 0.4568,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.3103,
+      "sessions_to_70pct": null,
+      "trace": [
+        0.1468,
+        0.1687,
+        0.207,
+        0.4691,
+        0.5363,
+        0.4568
+      ]
+    },
+    {
+      "profile": "beginner_err",
+      "policy": "adaptive",
+      "sessions": 6,
+      "first_session_mastery": 0.2963,
+      "final_mastery": 0.6643,
+      "mastery_gain": 0.368,
+      "final_mean_mastery": 0.6643,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.2069,
+      "sessions_to_70pct": null,
+      "trace": [
+        0.2963,
+        0.3182,
+        0.3184,
+        0.4924,
+        0.5897,
+        0.6643
+      ]
+    },
+    {
+      "profile": "beginner_err",
+      "policy": "adaptive",
+      "sessions": 6,
+      "first_session_mastery": 0.2172,
+      "final_mastery": 0.4577,
+      "mastery_gain": 0.2406,
+      "final_mean_mastery": 0.4577,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.2759,
+      "sessions_to_70pct": null,
+      "trace": [
+        0.2172,
+        0.2696,
+        0.3669,
+        0.2887,
+        0.4487,
+        0.4577
+      ]
+    },
+    {
+      "profile": "beginner_err",
+      "policy": "random",
+      "sessions": 6,
+      "first_session_mastery": 0.3591,
+      "final_mastery": 0.2249,
+      "mastery_gain": -0.1342,
+      "final_mean_mastery": 0.2249,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.2069,
+      "sessions_to_70pct": null,
+      "trace": [
+        0.3591,
+        0.2225,
+        0.3578,
+        0.1735,
+        0.2496,
+        0.2249
+      ]
+    },
+    {
+      "profile": "beginner_err",
+      "policy": "random",
+      "sessions": 6,
+      "first_session_mastery": 0.5228,
+      "final_mastery": 0.3594,
+      "mastery_gain": -0.1634,
+      "final_mean_mastery": 0.3594,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.2414,
+      "sessions_to_70pct": null,
+      "trace": [
+        0.5228,
+        0.3773,
+        0.2873,
+        0.2039,
+        0.3012,
+        0.3594
+      ]
+    },
+    {
+      "profile": "beginner_err",
+      "policy": "random",
+      "sessions": 6,
+      "first_session_mastery": 0.1956,
+      "final_mastery": 0.5964,
+      "mastery_gain": 0.4008,
+      "final_mean_mastery": 0.5964,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.1724,
+      "sessions_to_70pct": null,
+      "trace": [
+        0.1956,
+        0.3787,
+        0.5932,
+        0.4391,
+        0.482,
+        0.5964
+      ]
+    },
+    {
+      "profile": "beginner_err",
+      "policy": "random",
+      "sessions": 6,
+      "first_session_mastery": 0.2055,
+      "final_mastery": 0.3502,
+      "mastery_gain": 0.1447,
+      "final_mean_mastery": 0.3502,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.1724,
+      "sessions_to_70pct": null,
+      "trace": [
+        0.2055,
+        0.2188,
+        0.1902,
+        0.1811,
+        0.3467,
+        0.3502
+      ]
+    },
+    {
+      "profile": "beginner_err",
+      "policy": "random",
+      "sessions": 6,
+      "first_session_mastery": 0.2275,
+      "final_mastery": 0.3605,
+      "mastery_gain": 0.133,
+      "final_mean_mastery": 0.3605,
+      "topics_touched": 4,
+      "questions_asked": 30,
+      "repetition_rate": 0.3793,
+      "sessions_to_70pct": null,
+      "trace": [
+        0.2275,
+        0.2325,
+        0.1948,
+        0.358,
+        0.2723,
+        0.3605
+      ]
+    }
+  ],
+  "caveat": "SIMULATED students under a stated response model. These numbers measure the question-selection scheduler, NOT real student outcomes. They must not be presented as evidence of real-world learning gains."
+}

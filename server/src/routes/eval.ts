@@ -101,7 +101,15 @@ export async function runLocalEval(userId: string, limit = 40) {
       'No evaluation test set found. Run evaluation/build_testset.py first.'
     );
   }
-  const entries: TestSetEntry[] = JSON.parse(fs.readFileSync(testsetPath, 'utf8'));
+  // testset.json is { version, entries[], ... } — the array lives under
+  // `entries`, not at the top level.
+  const parsed = JSON.parse(fs.readFileSync(testsetPath, 'utf8')) as
+    | TestSetEntry[]
+    | { entries: TestSetEntry[] };
+  const entries = Array.isArray(parsed) ? parsed : parsed.entries;
+  if (!Array.isArray(entries) || !entries.length) {
+    throw new ApiError(422, 'TESTSET_EMPTY', 'The evaluation test set is empty.');
+  }
 
   const agg = {
     faithfulness: 0,
@@ -116,7 +124,16 @@ export async function runLocalEval(userId: string, limit = 40) {
   let offMaterialCorrect = 0;
   const failures: string[] = [];
 
-  for (const entry of entries.slice(0, limit)) {
+  // A plain slice(0, limit) would take only the leading in-material entries and
+  // silently drop every off-material query (they sort last), leaving
+  // refusal_accuracy undefined. Sample proportionally instead.
+  const inAll = entries.filter((e) => !e.isOffMaterial);
+  const offAll = entries.filter((e) => e.isOffMaterial);
+  const offQuota = Math.min(offAll.length, Math.max(1, Math.round(limit * 0.25)));
+  const inQuota = Math.max(1, limit - offQuota);
+  const sample = [...inAll.slice(0, inQuota), ...offAll.slice(0, offQuota)];
+
+  for (const entry of sample) {
     let hits: Awaited<ReturnType<typeof retrieveUnits>> = [];
     try {
       hits = await retrieveUnits(userId, { question: entry.question, topK: 8 });
@@ -134,7 +151,16 @@ export async function runLocalEval(userId: string, limit = 40) {
       continue;
     }
 
-    const citedText = result.citations.map((c) => c.excerpt).join(' ');
+    // Use the full unit text: `citation.excerpt` is truncated to 240 chars for
+    // the UI, so scoring against it understates faithfulness for any answer
+    // drawing on a longer passage. This matches evaluation/run_eval.py.
+    const citedIds = result.citations.map((c) => c.unitId);
+    const fullUnits = citedIds.length
+      ? await Unit.find({ _id: { $in: citedIds } }).select('text').lean()
+      : [];
+    const fullById = new Map(fullUnits.map((u: any) => [String(u._id), u.text as string]));
+    const citedText =
+      result.citations.map((c) => fullById.get(c.unitId) ?? c.excerpt).join(' ') || '';
     agg.faithfulness += faithfulness(result.answer, citedText);
     agg.answer_relevancy += answerRelevancy(result.answer, entry.question);
     agg.context_precision += contextPrecision(retrievedIds, entry.groundTruthUnitIds);
@@ -158,12 +184,14 @@ export async function runLocalEval(userId: string, limit = 40) {
     off_material_tested: offMaterial,
     off_material_declined: offMaterialCorrect,
     retrieval_failures: failures.length,
+    sampling: `first ${inQuota} in-material + first ${offQuota} off-material`,
   };
 
   const run = await EvalRun.create({
     userId,
     framework: 'local-exact',
     metrics,
+    personalization: null,
     testSetVersion: 'v1',
     notes:
       'Computed by the in-app evaluator against evaluation/testset.json. ' +
@@ -186,7 +214,10 @@ export async function runLocalEval(userId: string, limit = 40) {
 router.get(
   '/results',
   asyncHandler(async (_req, res) => {
-    const run = await EvalRun.findOne({ userId: null }).sort({ createdAt: -1 }).lean();
+    // Evaluation results are properties of the SYSTEM, not of one student, so the
+  // latest run is global. (Querying userId:null here would always miss runs
+  // recorded against a specific account and the landing page would stay empty.)
+  const run = await EvalRun.findOne({}).sort({ createdAt: -1 }).lean();
     if (!run) {
       res.json({
         metrics: null,

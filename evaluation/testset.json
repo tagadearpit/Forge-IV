@@ -1,0 +1,588 @@
+{
+  "version": "v1",
+  "generatedFrom": [
+    "CS 241 — Systems Programming: Memory & Concurrency"
+  ],
+  "topics": [
+    "The Virtual Memory Subsystem",
+    "Page Faults And Replacement",
+    "The Cache Hierarchy",
+    "Concurrency Primitives",
+    "Summary"
+  ],
+  "note": "Ground-truth unit IDs are derived from the real seeded corpus, so context recall and citation accuracy are computed against units that really exist.",
+  "entries": [
+    {
+      "question": "According to your material, what does this statement say: \"CS 241 — Systems Programming Lecture 7: Memory Management, Caching and Concurrency This handout accompanies Lecture 7.\"?",
+      "referenceAnswer": "CS 241 — Systems Programming Lecture 7: Memory Management, Caching and Concurrency This handout accompanies Lecture 7.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90d"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "In the uploaded material, what is described regarding 241 systems programming lecture?",
+      "referenceAnswer": "CS 241 — Systems Programming Lecture 7: Memory Management, Caching and Concurrency This handout accompanies Lecture 7.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90d"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "According to your material, what does this statement say: \"It covers the virtual memory subsystem, the cache hierarchy, and the concurrency primitives that the rest of the course \"?",
+      "referenceAnswer": "It covers the virtual memory subsystem, the cache hierarchy, and the concurrency primitives that the rest of the course builds on.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90d"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "In the uploaded material, what is described regarding covers virtual memory subsystem?",
+      "referenceAnswer": "It covers the virtual memory subsystem, the cache hierarchy, and the concurrency primitives that the rest of the course builds on.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90d"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "According to your material, what does this statement say: \"THE VIRTUAL MEMORY SUBSYSTEM Every process sees its own contiguous address space, but the physical memory behind it is f\"?",
+      "referenceAnswer": "THE VIRTUAL MEMORY SUBSYSTEM Every process sees its own contiguous address space, but the physical memory behind it is fragmented and finite.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90d"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "In the uploaded material, what is described regarding virtual memory subsystem every?",
+      "referenceAnswer": "THE VIRTUAL MEMORY SUBSYSTEM Every process sees its own contiguous address space, but the physical memory behind it is fragmented and finite.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90d"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "According to your material, what does this statement say: \"It provides three guarantees: isolation between processes, the illusion of a large contiguous space, and the ability to \"?",
+      "referenceAnswer": "It provides three guarantees: isolation between processes, the illusion of a large contiguous space, and the ability to run programs larger than physical RAM.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90d"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "According to your material, what does this statement say: \"On a 4 KiB page system with a 48-bit virtual address, the low 12 bits are the page offset and the upper 36 bits are the \"?",
+      "referenceAnswer": "On a 4 KiB page system with a 48-bit virtual address, the low 12 bits are the page offset and the upper 36 bits are the virtual page number.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90d"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "According to your material, what does this statement say: \"The MMU consults the page table to translate the virtual page number into a physical frame number, then concatenates the\"?",
+      "referenceAnswer": "The MMU consults the page table to translate the virtual page number into a physical frame number, then concatenates the physical frame number with the offset to form the physical address.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90e"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "In the uploaded material, what is described regarding mmu consults page table?",
+      "referenceAnswer": "The MMU consults the page table to translate the virtual page number into a physical frame number, then concatenates the physical frame number with the offset to form the physical address.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90e"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "According to your material, what does this statement say: \"The page table itself is usually too large to keep resident, so modern systems use multi-level page tables.\"?",
+      "referenceAnswer": "The page table itself is usually too large to keep resident, so modern systems use multi-level page tables.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90e"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "In the uploaded material, what is described regarding page table itself usually?",
+      "referenceAnswer": "The page table itself is usually too large to keep resident, so modern systems use multi-level page tables.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90e"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "According to your material, what does this statement say: \"A four-level table on x86-64 means three of the four levels are only allocated when actually used.\"?",
+      "referenceAnswer": "A four-level table on x86-64 means three of the four levels are only allocated when actually used.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90e"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "In the uploaded material, what is described regarding four-level table x86-64 means?",
+      "referenceAnswer": "A four-level table on x86-64 means three of the four levels are only allocated when actually used.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90e"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "According to your material, what does this statement say: \"Programs with a small working set therefore pay a very small translation cost, because they never allocate the upper lev\"?",
+      "referenceAnswer": "Programs with a small working set therefore pay a very small translation cost, because they never allocate the upper levels.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90e"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "According to your material, what does this statement say: \"The TLB (translation lookaside buffer) is a small fully-associative cache sitting in the MMU that holds recent virtual-t\"?",
+      "referenceAnswer": "The TLB (translation lookaside buffer) is a small fully-associative cache sitting in the MMU that holds recent virtual-to-physical translations.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90e"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "According to your material, what does this statement say: \"A TLB miss costs roughly an order of magnitude more than a cache hit, which is why working-set size matters more than ra\"?",
+      "referenceAnswer": "A TLB miss costs roughly an order of magnitude more than a cache hit, which is why working-set size matters more than raw instruction count in memory-bound workloads.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90f"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "In the uploaded material, what is described regarding tlb miss costs roughly?",
+      "referenceAnswer": "A TLB miss costs roughly an order of magnitude more than a cache hit, which is why working-set size matters more than raw instruction count in memory-bound workloads.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90f"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "According to your material, what does this statement say: \"PAGE FAULTS AND REPLACEMENT A page fault occurs when a translation is not valid in the page table.\"?",
+      "referenceAnswer": "PAGE FAULTS AND REPLACEMENT A page fault occurs when a translation is not valid in the page table.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90f"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "In the uploaded material, what is described regarding page faults replacement page?",
+      "referenceAnswer": "PAGE FAULTS AND REPLACEMENT A page fault occurs when a translation is not valid in the page table.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90f"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "According to your material, what does this statement say: \"A minor fault means the page is present in memory but the mapping is not yet established, for example after fork.\"?",
+      "referenceAnswer": "A minor fault means the page is present in memory but the mapping is not yet established, for example after fork.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90f"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "In the uploaded material, what is described regarding minor fault means page?",
+      "referenceAnswer": "A minor fault means the page is present in memory but the mapping is not yet established, for example after fork.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90f"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "According to your material, what does this statement say: \"A major fault means the page is not in memory at all and must be read from the backing store, which costs a disk or SSD \"?",
+      "referenceAnswer": "A major fault means the page is not in memory at all and must be read from the backing store, which costs a disk or SSD access.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90f"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "According to your material, what does this statement say: \"LRU evicts the least recently used page and is cheap to implement approximately with a clock hand, but it suffers badly \"?",
+      "referenceAnswer": "LRU evicts the least recently used page and is cheap to implement approximately with a clock hand, but it suffers badly from sequential scans that evict the entire working set and then immediately reload it.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90f"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "According to your material, what does this statement say: \"THE CACHE HIERARCHY Memory is organised as a hierarchy of caches between the CPU and main memory.\"?",
+      "referenceAnswer": "THE CACHE HIERARCHY Memory is organised as a hierarchy of caches between the CPU and main memory.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc910"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "In the uploaded material, what is described regarding cache hierarchy memory organised?",
+      "referenceAnswer": "THE CACHE HIERARCHY Memory is organised as a hierarchy of caches between the CPU and main memory.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc910"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "According to your material, what does this statement say: \"The hierarchy exploits two properties: locality in time, meaning recently accessed addresses are likely to be accessed a\"?",
+      "referenceAnswer": "The hierarchy exploits two properties: locality in time, meaning recently accessed addresses are likely to be accessed again, and locality in space, meaning addresses near a recent access are also likely.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc910"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "In the uploaded material, what is described regarding hierarchy exploits two properties?",
+      "referenceAnswer": "The hierarchy exploits two properties: locality in time, meaning recently accessed addresses are likely to be accessed again, and locality in space, meaning addresses near a recent access are also likely.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc910"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "According to your material, what does this statement say: \"A 64-byte line on a 64-byte-aligned address means an aligned 8-byte load pulls in 64 bytes, of which 56 are wasted.\"?",
+      "referenceAnswer": "A 64-byte line on a 64-byte-aligned address means an aligned 8-byte load pulls in 64 bytes, of which 56 are wasted.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc910"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "In the uploaded material, what is described regarding 64-byte line 64-byte-aligned address?",
+      "referenceAnswer": "A 64-byte line on a 64-byte-aligned address means an aligned 8-byte load pulls in 64 bytes, of which 56 are wasted.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc910"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "According to your material, what does this statement say: \"Larger lines help sequential workloads by amortising the tag lookup; smaller lines help random pointer chasing by reduci\"?",
+      "referenceAnswer": "Larger lines help sequential workloads by amortising the tag lookup; smaller lines help random pointer chasing by reducing waste.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc910"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "According to your material, what does this statement say: \"They are fast and simple but suffer conflict misses when two hot addresses map to the same set.\"?",
+      "referenceAnswer": "They are fast and simple but suffer conflict misses when two hot addresses map to the same set.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc910"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "According to your material, what does this statement say: \"but suffer conflict misses when two hot addresses map to the same set.\"?",
+      "referenceAnswer": "but suffer conflict misses when two hot addresses map to the same set.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc911"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "In the uploaded material, what is described regarding suffer conflict misses two?",
+      "referenceAnswer": "but suffer conflict misses when two hot addresses map to the same set.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc911"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "According to your material, what does this statement say: \"Fully associative caches avoid conflict misses entirely but need a full associativity search on every lookup, which is w\"?",
+      "referenceAnswer": "Fully associative caches avoid conflict misses entirely but need a full associativity search on every lookup, which is why they are impractical for large caches.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc911"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "In the uploaded material, what is described regarding fully associative caches avoid?",
+      "referenceAnswer": "Fully associative caches avoid conflict misses entirely but need a full associativity search on every lookup, which is why they are impractical for large caches.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc911"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "According to your material, what does this statement say: \"A 4-way set-associative cache has 4 candidate locations per set, and the replacement decision is confined to those 4 way\"?",
+      "referenceAnswer": "A 4-way set-associative cache has 4 candidate locations per set, and the replacement decision is confined to those 4 ways.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc911"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "In the uploaded material, what is described regarding 4-way set-associative cache candidate?",
+      "referenceAnswer": "A 4-way set-associative cache has 4 candidate locations per set, and the replacement decision is confined to those 4 ways.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc911"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "According to your material, what does this statement say: \"The associativity increases hit rate by reducing conflict misses while keeping the hardware search parallel and cheap.\"?",
+      "referenceAnswer": "The associativity increases hit rate by reducing conflict misses while keeping the hardware search parallel and cheap.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc911"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "According to your material, what does this statement say: \"The optimal associativity for a given cache size is an empirical question; the usual answer is 4 to 8 ways.\"?",
+      "referenceAnswer": "The optimal associativity for a given cache size is an empirical question; the usual answer is 4 to 8 ways.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc911"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "According to your material, what does this statement say: \"Data races are the source of most difficult concurrency bugs because the observed behaviour is not reproducible.\"?",
+      "referenceAnswer": "Data races are the source of most difficult concurrency bugs because the observed behaviour is not reproducible.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc912"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "In the uploaded material, what is described regarding data races source difficult?",
+      "referenceAnswer": "Data races are the source of most difficult concurrency bugs because the observed behaviour is not reproducible.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc912"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "According to your material, what does this statement say: \"Only one thread may hold the lock at a time, so the critical section is serialised.\"?",
+      "referenceAnswer": "Only one thread may hold the lock at a time, so the critical section is serialised.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc912"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "In the uploaded material, what is described regarding one thread hold lock?",
+      "referenceAnswer": "Only one thread may hold the lock at a time, so the critical section is serialised.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc912"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "According to your material, what does this statement say: \"The cost of acquiring a mutex is two atomic operations in the uncontended case, which is on the order of twenty nanoseco\"?",
+      "referenceAnswer": "The cost of acquiring a mutex is two atomic operations in the uncontended case, which is on the order of twenty nanoseconds.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc912"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "In the uploaded material, what is described regarding cost acquiring mutex two?",
+      "referenceAnswer": "The cost of acquiring a mutex is two atomic operations in the uncontended case, which is on the order of twenty nanoseconds.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc912"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "According to your material, what does this statement say: \"Under contention the cost rises sharply, so mutexes should protect the smallest possible critical section.\"?",
+      "referenceAnswer": "Under contention the cost rises sharply, so mutexes should protect the smallest possible critical section.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc912"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "According to your material, what does this statement say: \"A reader-writer lock allows many concurrent readers but only a single writer.\"?",
+      "referenceAnswer": "A reader-writer lock allows many concurrent readers but only a single writer.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc912"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "According to your material, what does this statement say: \"Deadlock requires four conditions to hold simultaneously: mutual exclusion, hold and wait, no preemption, and circular w\"?",
+      "referenceAnswer": "Deadlock requires four conditions to hold simultaneously: mutual exclusion, hold and wait, no preemption, and circular wait.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc913"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "In the uploaded material, what is described regarding deadlock requires four conditions?",
+      "referenceAnswer": "Deadlock requires four conditions to hold simultaneously: mutual exclusion, hold and wait, no preemption, and circular wait.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc913"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "According to your material, what does this statement say: \"The most common practical technique is to impose a global lock ordering, which breaks circular wait by construction.\"?",
+      "referenceAnswer": "The most common practical technique is to impose a global lock ordering, which breaks circular wait by construction.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc913"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "In the uploaded material, what is described regarding common practical technique impose?",
+      "referenceAnswer": "The most common practical technique is to impose a global lock ordering, which breaks circular wait by construction.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc913"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "According to your material, what does this statement say: \"SUMMARY The virtual memory subsystem provides isolation and the illusion of unlimited address space, implemented with mu\"?",
+      "referenceAnswer": "SUMMARY The virtual memory subsystem provides isolation and the illusion of unlimited address space, implemented with multi-level page tables and accelerated by the TLB.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc913"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "In the uploaded material, what is described regarding summary virtual memory subsystem?",
+      "referenceAnswer": "SUMMARY The virtual memory subsystem provides isolation and the illusion of unlimited address space, implemented with multi-level page tables and accelerated by the TLB.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc913"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "According to your material, what does this statement say: \"The cache hierarchy exploits temporal and spatial locality, with set-associativity balancing hit rate against hardware c\"?",
+      "referenceAnswer": "The cache hierarchy exploits temporal and spatial locality, with set-associativity balancing hit rate against hardware cost.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc913"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "According to your material, what does this statement say: \"Concurrency primitives from mutexes to atomics each solve a different part of the data race problem, and choosing among \"?",
+      "referenceAnswer": "Concurrency primitives from mutexes to atomics each solve a different part of the data race problem, and choosing among them requires understanding whether contention is expected and where the critical section lies.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc913"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "Summarise what your material covers about The Virtual Memory Subsystem.",
+      "referenceAnswer": "CS 241 — Systems Programming Lecture 7: Memory Management, Caching and Concurrency This handout accompanies Lecture 7. It covers the virtual memory subsystem, the cache hierarchy, and the concurrency primitives that the rest of the course builds on.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90d",
+        "6acb29f8af78efff662fc90e",
+        "6acb29f8af78efff662fc90f"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "Summarise what your material covers about Page Faults And Replacement.",
+      "referenceAnswer": "CS 241 — Systems Programming Lecture 7: Memory Management, Caching and Concurrency This handout accompanies Lecture 7. It covers the virtual memory subsystem, the cache hierarchy, and the concurrency primitives that the rest of the course builds on.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90d",
+        "6acb29f8af78efff662fc90e",
+        "6acb29f8af78efff662fc90f"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "Summarise what your material covers about The Cache Hierarchy.",
+      "referenceAnswer": "CS 241 — Systems Programming Lecture 7: Memory Management, Caching and Concurrency This handout accompanies Lecture 7. It covers the virtual memory subsystem, the cache hierarchy, and the concurrency primitives that the rest of the course builds on.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90d",
+        "6acb29f8af78efff662fc90e",
+        "6acb29f8af78efff662fc910"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "Summarise what your material covers about Concurrency Primitives.",
+      "referenceAnswer": "CS 241 — Systems Programming Lecture 7: Memory Management, Caching and Concurrency This handout accompanies Lecture 7. It covers the virtual memory subsystem, the cache hierarchy, and the concurrency primitives that the rest of the course builds on.",
+      "groundTruthUnitIds": [
+        "6acb29f8af78efff662fc90d",
+        "6acb29f8af78efff662fc911",
+        "6acb29f8af78efff662fc913"
+      ],
+      "isOffMaterial": false
+    },
+    {
+      "question": "What is the capital city of France?",
+      "referenceAnswer": "The assistant should decline: this question is not covered by the uploaded material.",
+      "groundTruthUnitIds": [],
+      "isOffMaterial": true
+    },
+    {
+      "question": "How do I bake a sourdough loaf at home?",
+      "referenceAnswer": "The assistant should decline: this question is not covered by the uploaded material.",
+      "groundTruthUnitIds": [],
+      "isOffMaterial": true
+    },
+    {
+      "question": "What is the mass of a proton in kilograms?",
+      "referenceAnswer": "The assistant should decline: this question is not covered by the uploaded material.",
+      "groundTruthUnitIds": [],
+      "isOffMaterial": true
+    },
+    {
+      "question": "Who won the FIFA World Cup in 2022?",
+      "referenceAnswer": "The assistant should decline: this question is not covered by the uploaded material.",
+      "groundTruthUnitIds": [],
+      "isOffMaterial": true
+    },
+    {
+      "question": "Explain how a diesel engine combusts fuel.",
+      "referenceAnswer": "The assistant should decline: this question is not covered by the uploaded material.",
+      "groundTruthUnitIds": [],
+      "isOffMaterial": true
+    },
+    {
+      "question": "What is the population of Tokyo?",
+      "referenceAnswer": "The assistant should decline: this question is not covered by the uploaded material.",
+      "groundTruthUnitIds": [],
+      "isOffMaterial": true
+    },
+    {
+      "question": "Recommend a good detective novel.",
+      "referenceAnswer": "The assistant should decline: this question is not covered by the uploaded material.",
+      "groundTruthUnitIds": [],
+      "isOffMaterial": true
+    },
+    {
+      "question": "How do I train for a half marathon?",
+      "referenceAnswer": "The assistant should decline: this question is not covered by the uploaded material.",
+      "groundTruthUnitIds": [],
+      "isOffMaterial": true
+    },
+    {
+      "question": "What is the boiling point of water at sea level?",
+      "referenceAnswer": "The assistant should decline: this question is not covered by the uploaded material.",
+      "groundTruthUnitIds": [],
+      "isOffMaterial": true
+    },
+    {
+      "question": "Who wrote the Ramayana?",
+      "referenceAnswer": "The assistant should decline: this question is not covered by the uploaded material.",
+      "groundTruthUnitIds": [],
+      "isOffMaterial": true
+    },
+    {
+      "question": "How does photosynthesis convert sunlight?",
+      "referenceAnswer": "The assistant should decline: this question is not covered by the uploaded material.",
+      "groundTruthUnitIds": [],
+      "isOffMaterial": true
+    },
+    {
+      "question": "What currency does Japan use?",
+      "referenceAnswer": "The assistant should decline: this question is not covered by the uploaded material.",
+      "groundTruthUnitIds": [],
+      "isOffMaterial": true
+    },
+    {
+      "question": "Explain the rules of cricket test matches.",
+      "referenceAnswer": "The assistant should decline: this question is not covered by the uploaded material.",
+      "groundTruthUnitIds": [],
+      "isOffMaterial": true
+    },
+    {
+      "question": "How do vaccines create immunity?",
+      "referenceAnswer": "The assistant should decline: this question is not covered by the uploaded material.",
+      "groundTruthUnitIds": [],
+      "isOffMaterial": true
+    }
+  ]
+}
