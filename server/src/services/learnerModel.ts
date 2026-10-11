@@ -96,12 +96,16 @@ export async function recordAnswer(
   rec.source = opts.source ?? 'quiz';
 
   // Keep a bounded history for the sparkline / mastery-over-time chart.
+  // Cast through unknown[] for .length so this is independent of the Mongoose
+  // DocumentArray typing, which has been unstable across minor versions and
+  // currently reports "Property 'length' does not exist" under strict TS.
   rec.history.push({
     at: new Date(),
     pLearned: rec.pLearned,
     retention: currentRetention,
   } as never);
-  if (rec.history.length > 200) rec.history.splice(0, rec.history.length - 200) as never;
+  const historyLen = (rec.history as unknown as unknown[]).length;
+  if (historyLen > 200) rec.history.splice(0, historyLen - 200) as never;
 
   await rec.save();
 

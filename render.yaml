@@ -20,7 +20,13 @@ services:
     # build with Node 26 a stale node_modules containing TypeScript 6 survived
     # in the cache and was re-extracted, so npm ci picked up the wrong toolchain
     # and emitted TS5108 against this tsconfig.
-    buildCommand: rm -rf node_modules && npm ci && npm run build -w @studymind/server
+    #
+    # `--include=dev` is non-negotiable here: Render's build environment sets
+    # NODE_ENV=production during the build phase, which would otherwise cause
+    # `npm ci` to skip devDependencies (typescript, @types/node, tsx, ...),
+    # making the typecheck fail with TS2584/TS2591 even though the runtime
+    # would be fine.
+    buildCommand: rm -rf node_modules && npm ci --include=dev --no-audit --no-fund && npm run build -w @studymind/server
 
     # dist/index.js binds 0.0.0.0:$PORT, and Render injects PORT automatically.
     # Do not set PORT yourself.
