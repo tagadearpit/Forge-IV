@@ -16,6 +16,34 @@ function num(key: string, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+/**
+ * Where uploaded originals live.
+ *
+ * An explicit UPLOAD_DIR is honoured as given. Without one, the default is
+ * anchored to THIS PACKAGE's root rather than process.cwd(), because cwd
+ * differs depending on how the server was started:
+ *
+ *   npm run dev -w server   (tsx src/index.ts)   -> <repo>/server/uploads
+ *   node dist/index.js      (from server/)       -> <repo>/server/uploads
+ *   node server/dist/index.js (from repo root)   -> <repo>/uploads   <-- was
+ *
+ * That last case silently created a second, empty uploads directory: the
+ * database listed sources whose PDFs were not on disk, and the file route
+ * correctly answered FILE_MISSING. Anchoring to the package root makes the
+ * location independent of the launch directory.
+ */
+function serverPackageRoot(): string {
+  // __dirname is <pkg>/src/config or <pkg>/dist/config depending on src vs dist,
+  // so the package root is always two levels up.
+  return path.resolve(__dirname, '..', '..');
+}
+
+function resolveUploadDir(): string {
+  const explicit = process.env.UPLOAD_DIR;
+  if (explicit && explicit !== '') return path.resolve(process.cwd(), explicit);
+  return path.join(serverPackageRoot(), 'uploads');
+}
+
 const NODE_ENV = str('NODE_ENV', 'development');
 const geminiKey = str('GEMINI_API_KEY');
 const forced = str('AI_PROVIDER').toLowerCase();
@@ -51,7 +79,7 @@ export const env = {
   GEMINI_EMBED_MODEL: str('GEMINI_EMBED_MODEL', 'text-embedding-004'),
   provider,
 
-  UPLOAD_DIR: path.resolve(process.cwd(), str('UPLOAD_DIR', 'uploads')),
+  UPLOAD_DIR: resolveUploadDir(),
   MAX_UPLOAD_MB: num('MAX_UPLOAD_MB', 100),
 
   RETRIEVAL_TOP_K: num('RETRIEVAL_TOP_K', 8),

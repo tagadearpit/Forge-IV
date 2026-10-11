@@ -15,7 +15,7 @@
     "eval": "python3 evaluation/run_eval.py"
   },
   "engines": {
-    "node": ">=20"
+    "node": "22.x"
   },
   "packageManager": "npm@10.9.3"
 }

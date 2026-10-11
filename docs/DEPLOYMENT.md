@@ -185,7 +185,40 @@ curl -s -o /dev/null -w '%{http_code}\n' -X OPTIONS \
 
 ---
 
-## 5. First-run seed
+## 5. First-run seed — read this before you seed
+
+### ⚠️ The seed creates database rows, not files
+
+`npm run seed` ingests a sample PDF and writes it to the **local** `uploads/`
+directory, then records the source in MongoDB. The uploaded file stays on the
+machine that ran the seed.
+
+So if you seed against the remote Atlas cluster from your laptop, Render gets
+the **rows but not the PDF**. Every seeded source then fails to open with:
+
+```json
+{"error":{"code":"FILE_MISSING","message":"The original file is no longer available on the server."}}
+```
+
+This is correct behaviour — the route refuses to serve a file it does not
+have — but it looks like a broken deploy.
+
+**What to do, in order of preference:**
+
+1. **Upload your PDF through the app UI after deploying.** Simplest, and it
+   exercises the real upload path.
+2. **Mount a disk** at `/var/data`, set `UPLOAD_DIR=/var/data/uploads`, and
+   re-run the seed against that same disk.
+3. Seed only the non-file demo state locally, and treat any source that
+   reports `FILE_MISSING` as expected.
+
+`UPLOAD_DIR` defaults to `<repo>/server/uploads` — anchored to the package, not
+to `process.cwd()`, so it does not move when you launch the server from a
+different directory. An explicit `UPLOAD_DIR` is honoured as given.
+
+---
+
+## 6. First-run seed
 
 The deployed database is empty, so sign up has nothing to show. Seed it:
 
@@ -261,6 +294,7 @@ Then, **in this order** — the steps are not optional:
 | `401` on the PDF/video viewer | stale build | file tokens last 5 min; the client refreshes |
 | Service won't start, log says JWT_SECRET | weak secret | `openssl rand -hex 32` |
 | Uploads vanish on redeploy | expected on free plan | mount a disk at `/var/data` |
+| Seeded sources report `FILE_MISSING` | the seed writes files to the machine that ran it, not to Render | upload the PDF through the UI after deploying — see §5 |
 | First request after idle takes ~50s | free-plan cold start | expected |
 
 ---
