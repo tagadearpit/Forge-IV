@@ -7,6 +7,7 @@ import {
 import { api } from '@/lib/api';
 import { Button, EmptyState, Alert, useToast, Skeleton } from '@/components/ui';
 import { cn, formatRelative } from '@/lib/utils';
+import { Markdown } from '@/components/markdown';
 
 type Phase = 'builder' | 'taking' | 'report';
 
@@ -262,7 +263,7 @@ function TakingView({
           </span>
         </div>
 
-        <p className="mt-4 text-lg font-medium leading-relaxed">{q.text}</p>
+        <Markdown className="mt-4 text-lg font-medium leading-relaxed">{q.text}</Markdown>
 
         <div className="mt-5">
           {q.type === 'mcq' && q.options && (

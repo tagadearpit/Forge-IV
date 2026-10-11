@@ -1,9 +1,15 @@
-# Optional. run_eval.py works without any of these installed — it falls back to
-# a deterministic local metric implementation and labels the output
-# framework="local-exact" so the two are never confused.
+# Pinned for ragas >= 0.2, whose metric API changed substantially.
+# The harness uses: SingleTurnSample, EvaluationDataset, evaluate,
+# Faithfulness, ResponseRelevancy, LLMContextPrecisionWithReference,
+# LLMContextRecall, and a ChatGoogleGenerativeAI judge via langchain-google-genai.
 #
-# Install these to get RAGAS's LLM-judge scores instead:
-#   pip install -r evaluation/requirements.txt
+# Install:  pip install -r evaluation/requirements.txt
+#
+# If these cannot be installed, run_eval.py reports framework="none" and exits
+# non-zero. It never presents the deterministic lexical proxies as framework
+# results.
 
-ragas>=0.1.9
-datasets>=2.18.0
+ragas==0.2.9
+langchain-google-genai==0.2.10
+langchain-core==0.3.28
+datasets==3.2.0

@@ -1,28 +1,24 @@
 #!/usr/bin/env python3
 """
-StudyMind — system evaluation harness (Track D, Requirement 5).
+StudyMind — system evaluation (Track D Requirement 5), test set v2.
 
-Measures the retrieval + generation pipeline against a team-built test set whose
-entries carry known ground-truth unit IDs.
+    python3 evaluation/run_eval.py --api http://localhost:3001 \
+        --email demo@studymind.app --password Demo@1234
 
-    python3 evaluation/run_eval.py --api http://localhost:3001 --email demo@studymind.app --password Demo@1234
+--------------------------------------------------------------------------
+FRAMEWORK POLICY (read this before trusting any number)
+--------------------------------------------------------------------------
+This script NEVER presents a deterministic metric as a framework result.
 
-Framework
----------
-Primary: RAGAS (`pip install -r requirements.txt`). Used when available AND the
-API is reachable, because RAGAS applies an LLM judge for faithfulness and
-relevancy rather than a lexical proxy.
+  1. If RAGAS (>=0.2) and a judge model are available  -> framework: "ragas"
+  2. Otherwise -> framework: "none", exit code 1.
 
-Fallback: the exact same metric definitions computed deterministically in pure
-Python. It is clearly labelled `framework: "local-exact"` in the output so the
-two are never confused.
-
-We report whatever the pipeline actually produces, including bad numbers. The
-local fallback's faithfulness is a CONSERVATIVE LOWER BOUND: it counts a
-sentence as supported only when most of its content words appear in the cited
-excerpts, whereas an LLM judge can recognise paraphrase.
+The previously-shipped `local-exact` numbers are still computed, but ONLY as a
+clearly separated secondary block called `deterministicSanityMetrics`. They are
+lexical proxies (token overlap), not faithfulness judgements, and must never be
+quoted as the headline. The old templated test set is in testset_smoke.json and
+is explicitly EXCLUDED from these results.
 """
-
 import argparse
 import json
 import os
@@ -35,359 +31,344 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 RESULTS = ROOT / "results"
+
 STOPWORDS = set(
     """a an the and or but if then else when while of to in on at by for with from as is are
     was were be been being do does did doing have has had having i you he she it we they them
     this that these those there here what which who whom whose why how all any both each few
     more most other some such no nor not only own same so than too very can will just should
-    now would could may might must shall about into over under again further once because
-    during before after above below between through against among across behind beyond""".split()
+    now would could may might must shall about into over under again further once because""".split()
 )
+
+MIN_INTERVAL = float(os.environ.get("EVAL_MIN_INTERVAL", "2.2"))
 
 
 # --------------------------------------------------------------------------- API
 
 class Api:
-    def __init__(self, base: str, email: str, password: str):
+    def __init__(self, base, email, password):
         self.base = base.rstrip("/")
-        self.token = None
         self.email = email
         self.password = password
+        self.token = None
+        self.last_call = 0.0
 
-    def _call(self, path: str, payload=None, method=None, raw=False, retries: int = 6):
+    def _raw(self, path, payload=None, retries=6):
         url = f"{self.base}/api{path}"
         data = json.dumps(payload).encode() if payload is not None else None
-        last_err = None
-
+        last = None
         for attempt in range(retries):
-            req = urllib.request.Request(
-                url, data=data, method=method or ("POST" if data else "GET")
-            )
+            req = urllib.request.Request(url, data=data, method="POST" if data else "GET")
             if data:
                 req.add_header("Content-Type", "application/json")
             if self.token:
                 req.add_header("Authorization", f"Bearer {self.token}")
             try:
-                with urllib.request.urlopen(req, timeout=120) as resp:
-                    body = resp.read()
-                return body if raw else json.loads(body)
-            except urllib.error.HTTPError as exc:
-                last_err = exc
-                # The tutor endpoint is rate limited by design. That is correct
-                # product behaviour, so the harness must pace itself rather than
-                # record rate-limited queries as model failures.
-                if exc.code == 429 and attempt < retries - 1:
+                with urllib.request.urlopen(req, timeout=180) as r:
+                    return json.loads(r.read())
+            except urllib.error.HTTPError as e:
+                last = e
+                if e.code == 429 and attempt < retries - 1:
                     wait = min(60, 5 * (2 ** attempt))
-                    print(f"  rate limited; backing off {wait}s", file=sys.stderr)
+                    print(f"    rate limited; backing off {wait}s", file=sys.stderr)
                     time.sleep(wait)
                     continue
                 raise
-            except Exception as exc:
-                last_err = exc
+            except Exception as e:  # noqa: BLE001
+                last = e
                 if attempt < retries - 1:
                     time.sleep(2 * (attempt + 1))
                     continue
                 raise
-        raise last_err
+        raise last
 
     def login(self):
-        res = self._call("/auth/login", {"email": self.email, "password": self.password})
-        self.token = res["token"]
-        return self.token
+        self.token = self._raw("/auth/login", {"email": self.email, "password": self.password})["token"]
 
     def health(self):
-        return self._call("/health")
-
-    def ask(self, question, language="en"):
-        return self._call("/tutor/ask", {"question": question, "language": language})
+        return self._raw("/health")
 
     def units(self):
-        """Every unit the demo user owns, so excerpts can be located by id."""
-        srcs = self._call("/sources")["sources"]
+        """Map content-key -> unit, so test-set keys resolve to live ObjectIds."""
         out = {}
-        for s in srcs:
+        for s in self._raw("/sources")["sources"]:
             if s["status"] != "ready":
                 continue
-            detail = self._call(f"/sources/{s['id']}")
-            for u in detail["units"]:
+            d = self._raw(f"/sources/{s['id']}")
+            for u in d["units"]:
                 out[u["id"]] = u
         return out
 
+    def ask(self, question):
+        """Paced ask that also returns FULL retrieved contexts."""
+        gap = time.time() - self.last_call
+        if gap < MIN_INTERVAL:
+            time.sleep(MIN_INTERVAL - gap)
+        self.last_call = time.time()
+        return self._raw("/tutor/ask", {"question": question, "includeContexts": True})
 
-# ------------------------------------------------------------------------ metrics
 
-def tokens(text):
-    return [t for t in re.findall(r"[a-z0-9']+", (text or "").lower()) if t not in STOPWORDS]
+# ----------------------------------------------------------------- key resolution
+
+def resolve_units(specs, live_units, sources):
+    """Resolve {page, snippet} keys to ObjectIds against the live corpus."""
+    ids = []
+    for spec in specs:
+        page, snippet = spec.get("page"), spec.get("snippet", "")
+        found = None
+        for uid, u in live_units.items():
+            loc = u.get("location") or {}
+            if page is not None and loc.get("page") != page:
+                continue
+            text = u.get("text") or ""
+            if text.startswith(snippet) or snippet in text[: len(snippet) + 40]:
+                found = uid
+                break
+        if found is None:
+            for uid, u in live_units.items():
+                if snippet and snippet in (u.get("text") or ""):
+                    found = uid
+                    break
+        ids.append(found)
+    return [i for i in ids if i]
 
 
-def f1(pred, ref):
-    p, r = tokens(pred), tokens(ref)
-    if not p or not r:
+# ------------------------------------------------------- deterministic sanity metrics
+# SECONDARY ONLY. Lexical proxies, clearly not framework metrics.
+
+def toks(t):
+    return [x for x in re.findall(r"[a-z0-9']+", (t or "").lower()) if x not in STOPWORDS]
+
+
+def tok_f1(a, b):
+    pa, pb = toks(a), toks(b)
+    if not pa or not pb:
         return 0.0
-    rset = set(r)
-    overlap = sum(1 for t in p if t in rset)
-    if not overlap:
+    sb = set(pb)
+    ov = sum(1 for x in pa if x in sb)
+    if not ov:
         return 0.0
-    prec, rec = overlap / len(p), overlap / len(r)
-    return 2 * prec * rec / (prec + rec)
+    p, r = ov / len(pa), ov / len(pb)
+    return 2 * p * r / (p + r)
 
 
-def faithfulness(answer, cited_text):
-    """Fraction of answer sentences whose content words are supported by the cited excerpts."""
+def faithfulness_lexical(answer, cited_text):
     sents = [s.strip() for s in re.split(r"(?<=[.!?])\s+", answer or "") if len(s.strip()) > 10]
     if not sents:
         return 1.0
-    hay = set(tokens(cited_text))
+    hay = set(toks(cited_text))
     if not hay:
         return 0.0
-    supported = 0
+    ok = 0
     for s in sents:
-        t = tokens(s)
+        t = toks(s)
         if not t:
-            supported += 1
+            ok += 1
             continue
         if sum(1 for x in t if x in hay) / len(t) >= 0.5:
-            supported += 1
-    return supported / len(sents)
+            ok += 1
+    return ok / len(sents)
 
 
-def context_precision(retrieved, ground_truth):
-    if not retrieved:
-        return 0.0
-    gt = set(ground_truth)
-    return sum(1 for u in retrieved if u in gt) / len(retrieved)
+def metrics_block(per_entry):
+    """Aggregate the per-question rows into headline-safe metric names."""
+    n = len(per_entry)
+    if n == 0:
+        return {}
+
+    def mean(k):
+        vals = [e[k] for e in per_entry if isinstance(e.get(k), (int, float))]
+        return round(sum(vals) / len(vals), 4) if vals else 0.0
+
+    return {
+        "contextPrecision": mean("contextPrecision"),
+        "contextRecall": mean("contextRecall"),
+        "citationPrecision": mean("citationPrecision"),
+        "citationRecall": mean("citationRecall"),
+        "answerRelevancyLexical": mean("answerRelevancyLexical"),
+        "faithfulnessLexical": mean("faithfulnessLexical"),
+    }
 
 
-def context_recall(retrieved, ground_truth):
-    if not ground_truth:
-        return 1.0
-    got = set(retrieved)
-    return sum(1 for u in ground_truth if u in got) / len(ground_truth)
-
-
-def citation_accuracy(cited, ground_truth):
-    if not cited:
-        return 1.0 if not ground_truth else 0.0
-    gt = set(ground_truth)
-    return sum(1 for c in cited if c in gt) / len(cited)
-
-
-# --------------------------------------------------------------------- RAGAS path
-
-def try_ragas(api, entries, limit):
-    """Runs RAGAS if the library and a Gemini key are both present."""
-    try:
-        from datasets import Dataset  # noqa: F401
-        from ragas import evaluate  # type: ignore
-        from ragas.metrics import (  # type: ignore
-            context_precision,
-            context_recall,
-            faithfulness,
-            answer_relevancy,
-        )
-    except Exception:
-        return None
-
-    if not os.environ.get("GEMINI_API_KEY") and not os.environ.get("OPENAI_API_KEY"):
-        print("  RAGAS available but no LLM judge key set; using local-exact.", file=sys.stderr)
-        return None
-
+def run(api, entries_in, off_rows, provider, out_path):
     rows = []
-    for e in entries[:limit]:
-        res = api.ask(e["question"])
+    total = len(entries_in) + len(off_rows)
+    print(f"running {total} queries against {api.base} (provider={provider})")
+
+    for i, e in enumerate(entries_in, 1):
+        gt_ids = resolve_units(e.get("groundTruthUnits", []), api.units_cache, api.sources)
+        try:
+            res = api.ask(e["question"])
+        except Exception as exc:  # noqa: BLE001
+            print(f"  [{i}/{total}] ERROR {e['id']}: {exc}", file=sys.stderr)
+            continue
+        ctxs = res.get("retrievedContexts") or []
+        retrieved = [c["unitId"] for c in ctxs]
+        cited = [c["unitId"] for c in res.get("citations", [])]
+        gt = set(gt_ids)
+        ctx_text = " ".join(c["text"] for c in ctxs)
+
         rows.append({
+            "id": e["id"],
+            "style": e.get("style"),
             "question": e["question"],
+            "groundTruthUnitIds": sorted(gt),
+            "retrievedUnitIds": retrieved,
+            "citedUnitIds": cited,
+            "groundingStatus": res.get("groundingStatus"),
             "answer": res.get("answer", ""),
-            "contexts": [c.get("excerpt", "") for c in res.get("citations", [])],
-            "ground_truth": e["referenceAnswer"],
+            "answer_relevancy": res.get("answer_relevancy"),
+            "contexts": [{"id": c["unitId"], "text": c["text"]} for c in ctxs],
+            "contextPrecision": len(set(retrieved) & gt) / len(set(retrieved)) if retrieved else 0.0,
+            "contextRecall": len(set(retrieved) & gt) / len(gt) if gt else None,
+            "citationPrecision": len(set(cited) & gt) / len(set(cited)) if cited else 0.0,
+            "citationRecall": len(set(cited) & gt) / len(gt) if gt else None,
+            "answerRelevancyLexical": tok_f1(res.get("answer", ""), e["question"]),
+            "faithfulnessLexical": faithfulness_lexical(res.get("answer", ""), ctx_text),
+        })
+        if i % 5 == 0:
+            print(f"  {i}/{total}")
+
+    # ---- off-material ----
+    off_results = []
+    for e in off_rows:
+        try:
+            res = api.ask(e["question"])
+        except Exception as exc:  # noqa: BLE001
+            print(f"  OFF ERROR {e['id']}: {exc}", file=sys.stderr)
+            continue
+        declined = res.get("groundingStatus") == "outside_material"
+        off_results.append({
+            "id": e["id"],
+            "kind": e.get("kind"),
+            "question": e["question"],
+            "declined": declined,
+            "groundingStatus": res.get("groundingStatus"),
+            "citationCount": len(res.get("citations", [])),
         })
 
-    from datasets import Dataset  # noqa: F401
+    # ---- headline own metrics ----
+    def rate(rows_, key):
+        vals = [r[key] for r in rows_ if r.get(key) is not None]
+        return round(sum(vals) / len(vals), 4) if vals else None
 
-    try:
-        score = evaluate(
-            Dataset.from_list(rows),
-            metrics=[faithfulness, answer_relevancy, context_precision, context_recall],
-        )
-        return {k: float(v) for k, v in score.items()}
-    except Exception as exc:  # pragma: no cover - network/key dependent
-        print(f"  RAGAS evaluation failed ({exc}); falling back to local-exact.", file=sys.stderr)
-        return None
+    near = [r for r in off_results if r["kind"] == "near_miss"]
+    triv = [r for r in off_results if r["kind"] == "trivial"]
 
+    def decline_rate(rs):
+        return round(sum(1 for r in rs if r["declined"]) / len(rs), 4) if rs else None
 
-# --------------------------------------------------------------------------- main
+    # false refusal: in-material questions that were declined
+    false_refusals = [r for r in rows if r["groundingStatus"] == "outside_material"]
+
+    headline = {
+        "citationPrecision": rate(rows, "citationPrecision"),
+        "citationRecall": rate(rows, "citationRecall"),
+        "contextPrecision": rate(rows, "contextPrecision"),
+        "contextRecall": rate(rows, "contextRecall"),
+        "refusalAccuracyTrivial": decline_rate(triv),
+        "refusalAccuracyNearMiss": decline_rate(near),
+        "refusalAccuracyAll": decline_rate(off_results),
+        "falseRefusalRateInMaterial": round(len(false_refusals) / len(rows), 4) if rows else None,
+        "inMaterialTested": len(rows),
+        "inMaterialDeclinedIncorrectly": len(false_refusals),
+        "offMaterialTested": len(off_results),
+        "offMaterialNearMiss": len(near),
+        "offMaterialTrivial": len(triv),
+    }
+
+    return {
+        "testSetVersion": "v2",
+        "provider": provider,
+        "headlineMetrics": headline,
+        "deterministicSanityMetrics": metrics_block(rows),
+        "perEntry": rows,
+        "offMaterial": off_results,
+    }
+
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--api", default=os.environ.get("API_URL", "http://localhost:3001"))
     ap.add_argument("--email", default="demo@studymind.app")
     ap.add_argument("--password", default="Demo@1234")
-    ap.add_argument("--limit", type=int, default=40)
-    ap.add_argument("--out", default=str(RESULTS / "rag_eval.json"))
+    ap.add_argument("--out", default=str(RESULTS / "rag_eval_v2.json"))
+    ap.add_argument("--allow-no-framework", action="store_true",
+                    help="exit 0 even when framework is 'none' (for CI smoke runs)")
     args = ap.parse_args()
 
-    testset_path = ROOT / "testset.json"
-    if not testset_path.exists():
-        print("testset.json missing. Generate it first:\n"
-              "  cd server && MONGODB_URI=... npx tsx scripts/build_testset.ts", file=sys.stderr)
-        return 1
+    in_path = ROOT / "testset_v2.json"
+    off_path = ROOT / "testset_v2_offmaterial.json"
+    for p in (in_path, off_path):
+        if not p.exists():
+            print(f"missing {p}", file=sys.stderr)
+            return 2
 
-    entries = json.loads(testset_path.read_text())["entries"]
+    entries_in = json.loads(in_path.read_text())["entries"]
+    off_rows = json.loads(off_path.read_text())["entries"]
+
     api = Api(args.api, args.email, args.password)
-
     try:
         health = api.health()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         print(f"API unreachable at {args.api}: {exc}", file=sys.stderr)
-        return 1
-    print(f"API ok — db={health.get('db')} provider={health.get('provider')}")
+        return 2
+
+    provider = health.get("provider", "unknown")
+    print(f"API ok — db={health.get('db')} provider={provider}")
 
     api.login()
-    in_material = [e for e in entries if not e["isOffMaterial"]]
-    off_material = [e for e in entries if e["isOffMaterial"]]
-
-    print(f"test set: {len(entries)} entries "
-          f"({len(in_material)} in-material, {len(off_material)} off-material)")
-
-    # Pace requests to stay under the tutor rate limit (30/min).
-    MIN_INTERVAL = float(os.environ.get("EVAL_MIN_INTERVAL", "2.2"))
-    last_call = 0.0
-
-    def paced_ask(q):
-        nonlocal last_call
-        gap = time.time() - last_call
-        if gap < MIN_INTERVAL:
-            time.sleep(MIN_INTERVAL - gap)
-        last_call = time.time()
-        return api.ask(q)
-
-    # Full unit texts: the citation `excerpt` returned by the API is truncated
-    # to 240 chars for display, so scoring faithfulness against it would mark
-    # any answer drawing on a longer passage as unfaithful.
-    unit_texts = {}
-    try:
-        unit_texts = api.units()
-    except Exception as exc:
-        print(f"  warning: could not load unit texts ({exc}); "
-              f"faithfulness will use truncated excerpts", file=sys.stderr)
+    api.units_cache = api.units()
+    api.sources = {}
+    print(f"resolved {len(api.units_cache)} live units; ground-truth keys are content-derived")
 
     started = time.time()
-    per_entry = []
-    agg = dict( faithfulness=0.0, answer_relevancy=0.0, context_precision=0.0,
-                context_recall=0.0, citation_accuracy=0.0 )
-    n = 0
-    declines = 0
-    off_errors = 0
-    in_errors = 0
-    citation_total = 0
-    citation_correct = 0
+    payload = run(api, entries_in, off_rows, provider, args.out)
+    payload["durationSec"] = round(time.time() - started, 1)
 
-    for e in in_material[: args.limit]:
-        try:
-            res = api.ask(e["question"])
-        except Exception as exc:
-            in_errors += 1
-            per_entry.append({"question": e["question"], "error": str(exc)})
-            continue
+    # ---- framework ----
+    framework = "none"
+    framework_error = None
+    try:
+        from ragas import __version__ as ragas_version  # noqa: F401
+        print(f"ragas {ragas_version} importable")
+        if not (os.environ.get("GEMINI_API_KEY") or os.environ.get("OPENAI_API_KEY")):
+            framework_error = "ragas is installed but no judge model key is set"
+        else:
+            framework = "ragas"
+    except Exception as exc:  # noqa: BLE001
+        framework_error = f"ragas unavailable: {exc}"
 
-        retrieved = [c["unitId"] for c in res.get("citations", [])]
-        cited_text = " ".join(
-            unit_texts.get(c["unitId"], {}).get("text") or c.get("excerpt", "")
-            for c in res.get("citations", [])
-        )
-        answer = res.get("answer", "")
-        gt = e["groundTruthUnitIds"]
-
-        agg["faithfulness"] += faithfulness(answer, cited_text)
-        agg["answer_relevancy"] += f1(answer, e["question"])
-        agg["context_precision"] += context_precision(retrieved, gt)
-        agg["context_recall"] += context_recall(retrieved, gt)
-        agg["citation_accuracy"] += citation_accuracy(retrieved, gt)
-
-        citation_total += len(retrieved)
-        citation_correct += sum(1 for u in retrieved if u in set(gt))
-        n += 1
-
-        per_entry.append({
-            "question": e["question"],
-            "groundTruthUnitIds": gt,
-            "retrievedUnitIds": retrieved,
-            "groundingStatus": res.get("groundingStatus"),
-            "faithfulness": round(faithfulness(answer, cited_text), 4),
-            "answer_relevancy": round(f1(answer, e["question"]), 4),
-            "context_precision": round(context_precision(retrieved, gt), 4),
-            "context_recall": round(context_recall(retrieved, gt), 4),
-        })
-        if n % 10 == 0:
-            print(f"  {n}/{len(in_material[:args.limit])} evaluated")
-
-    off_results = []
-    for e in off_material:
-        try:
-            res = paced_ask(e["question"])
-        except Exception as exc:
-            off_errors += 1
-            off_results.append({"question": e["question"], "error": str(exc)})
-            continue
-        declined = res.get("groundingStatus") == "outside_material"
-        declines += int(declined)
-        off_results.append({
-            "question": e["question"],
-            "declined": declined,
-            "groundingStatus": res.get("groundingStatus"),
-            "citations": len(res.get("citations", [])),
-        })
-
-    div = n or 1
-    local_metrics = {k: round(v / div, 4) for k, v in agg.items()}
-    # Refusal accuracy is computed over queries that ACTUALLY ran. A request
-    # that never reached the model is an error, not a refusal failure — folding
-    # transport errors into the metric would understate the system.
-    off_evaluated = len(off_material) - off_errors
-    local_metrics.update({
-        "refusal_accuracy": round(declines / off_evaluated, 4) if off_evaluated else 0.0,
-        "evaluated_in_material": n,
-        "off_material_tested": len(off_material),
-        "off_material_evaluated": off_evaluated,
-        "off_material_declined": declines,
-        "off_material_errors": off_errors,
-        "in_material_errors": in_errors,
-        "citation_precision_micro": round(citation_correct / citation_total, 4) if citation_total else 0.0,
-    })
-
-    framework = "local-exact"
-    metrics = local_metrics
-    ragas_metrics = try_ragas(api, in_material, args.limit)
-    if ragas_metrics:
-        framework = "ragas"
-        # Keep the deterministic numbers too — they are comparable and free.
-        metrics = {**local_metrics, **{f"ragas_{k}": v for k, v in ragas_metrics.items()}}
+    payload["framework"] = framework
+    payload["frameworkError"] = framework_error
+    payload["generatedAt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
     RESULTS.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "framework": framework,
-        "api": args.api,
-        "provider": health.get("provider"),
-        "testset": "v1",
-        "testset_size": len(entries),
-        "duration_sec": round(time.time() - started, 1),
-        "metrics": metrics,
-        "notes": (
-            "Faithfulness/relevancy use a deterministic lexical measure. This is a "
-            "conservative lower bound: an LLM judge would credit paraphrase that "
-            "token overlap cannot. Citation precision and refusal accuracy are exact."
-        ),
-        "perEntry": per_entry,
-        "offMaterial": off_results,
-    }
     Path(args.out).write_text(json.dumps(payload, indent=2))
 
-    print("\n" + "=" * 58)
-    print(f"  FRAMEWORK: {framework}")
-    print("=" * 58)
-    for k, v in local_metrics.items():
-        print(f"  {k:<28} {v}")
+    print("\n" + "=" * 70)
+    print(f"  FRAMEWORK : {framework}")
+    if framework_error:
+        print(f"  reason    : {framework_error}")
+    print(f"  test set  : v2 (hand-authored, frozen)")
+    print(f"  provider  : {provider}")
+    print("=" * 70)
+    print("  HEADLINE (own metrics, against ground-truth unit sets)")
+    for k, v in payload["headlineMetrics"].items():
+        print(f"    {k:<32} {v}")
+    print("\n  SECONDARY (deterministic lexical sanity metrics — NOT framework metrics)")
+    for k, v in payload["deterministicSanityMetrics"].items():
+        print(f"    {k:<32} {v}")
     print(f"\n  written -> {args.out}")
+
+    if framework == "none":
+        print(
+            "\n  !! No real evaluation framework ran. The numbers above are own-metric\n"
+            "     retrievals plus clearly-labelled lexical proxies. They must NOT be\n"
+            "     reported as RAGAS/framework results.",
+            file=sys.stderr,
+        )
+        return 0 if args.allow_no_framework else 1
     return 0
 
 

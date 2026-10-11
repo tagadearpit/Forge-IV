@@ -67,7 +67,22 @@ export const env = {
   GROUNDING_LEXICAL_THRESHOLD: str('GROUNDING_LEXICAL_THRESHOLD'),
 } as const;
 
-if (env.isProd && env.JWT_SECRET === 'dev-only-insecure-secret-change-me') {
-  // Fail fast rather than shipping a predictable signing key.
-  throw new Error('JWT_SECRET must be set to a strong random value in production.');
+/**
+ * Production refuses to boot with a weak signing key. A predictable JWT secret
+ * lets anyone mint tokens for any user, so this fails fast rather than
+ * degrading quietly.
+ */
+if (env.isProd) {
+  const secret = env.JWT_SECRET;
+  const weak =
+    secret === 'dev-only-insecure-secret-change-me' ||
+    /change-?me/i.test(secret) ||
+    secret.length < 32;
+  if (weak) {
+    throw new Error(
+      'JWT_SECRET is not acceptable in production. It must NOT be the dev default, ' +
+        'must not contain "change-me", and must be at least 32 characters. ' +
+        'Generate one with: openssl rand -hex 32'
+    );
+  }
 }

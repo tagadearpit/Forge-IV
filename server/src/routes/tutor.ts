@@ -3,7 +3,8 @@ import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { asyncHandler, validateBody, ApiError } from '../middleware/error';
 import { requireAuth, AuthedRequest } from '../middleware/auth';
-import { answerQuestion } from '../services/rag';
+import { answerQuestion, retrieveUnits } from '../services/rag';
+import { env } from '../config/env';
 import { logEvent } from '../services/events';
 
 const router = Router();
@@ -26,6 +27,13 @@ const askSchema = z.object({
     })
     .optional(),
   language: z.enum(['en', 'hi']).optional(),
+  /**
+   * EVALUATION ONLY. Returns the FULL retrieved unit texts and ids as
+   * `retrievedContexts`. Context metrics must be scored against these, not
+   * against the 240-char excerpt the UI shows — doing so systematically
+   * understates faithfulness and context recall.
+   */
+  includeContexts: z.boolean().optional(),
 });
 
 router.post(
@@ -34,8 +42,26 @@ router.post(
   askLimiter,
   validateBody(askSchema),
   asyncHandler(async (req: AuthedRequest, res) => {
-    const { question, scope, language } = req.body as z.infer<typeof askSchema>;
+    const { question, scope, language, includeContexts } =
+      req.body as z.infer<typeof askSchema>;
     const result = await answerQuestion(req.userId!, question, { scope, language });
+
+    if (includeContexts) {
+      const hits = await retrieveUnits(req.userId!, {
+        question,
+        topK: env.RETRIEVAL_TOP_K,
+        sourceIds: scope?.sourceIds,
+        topicIds: scope?.topicIds,
+      });
+      result.retrievedContexts = hits.map((h) => ({
+        unitId: h.unitId,
+        sourceTitle: h.sourceTitle,
+        text: h.text,
+        similarity: h.similarity,
+        location: h.location,
+      }));
+    }
+
     await logEvent(req.userId!, 'question_asked', null, null, 'tutor', {
       groundingStatus: result.groundingStatus,
       citations: result.citations.length,

@@ -44,73 +44,48 @@ read the most recent run from the `evalRuns` collection via `GET /api/eval/resul
 
 ## Metric definitions
 
+### Headline (own metrics, computed against ground-truth unit sets)
+
 | Metric | Definition |
 |---|---|
-| **Faithfulness** | Fraction of answer sentences whose content words appear in the cited excerpts. |
-| **Answer relevancy** | Token-level F1 between the question and the answer. |
-| **Context precision** | Fraction of *cited* units that are in the ground-truth set. |
+| **Citation precision** | Fraction of cited units that appear in the ground-truth set. |
+| **Citation recall** | Fraction of ground-truth units that were actually cited. |
+| **Context precision** | Fraction of *retrieved* units in the ground-truth set. |
 | **Context recall** | Fraction of ground-truth units that were retrieved. |
-| **Citation accuracy** | Fraction of citations pointing at a ground-truth unit. |
-| **Refusal accuracy** | Fraction of off-material queries correctly declined. |
+| **Refusal accuracy (trivial / near-miss)** | Off-material queries correctly declined, split by difficulty. |
+| **False-refusal rate** | In-material questions incorrectly declined — the over-refusal cost. |
+
+### Secondary — deterministic lexical proxies
+
+`faithfulnessLexical`, `answerRelevancyLexical`. Token-overlap measures, clearly
+**not** framework metrics and **not** judge scores. They are a conservative lower
+bound on faithfulness.
 
 ### A note on framework honesty
 
-`run_eval.py` prefers RAGAS when it is installed **and** an LLM-judge key is
-present. Otherwise it computes the same definitions deterministically and sets
-`framework: "local-exact"` in the output. The two are never conflated.
+`run_eval.py` prefers RAGAS when importable **and** a judge key is present. In
+this environment neither is true, so it reports `framework: "none"` and exits
+**non-zero**. The `local-exact` metrics that earlier versions reported as headline
+numbers have been demoted to the clearly-labelled secondary block above. See
+`docs/KNOWN_LIMITATIONS.md` §1.
 
-The local faithfulness measure is a **conservative lower bound**: it credits a
-sentence only when ≥50% of its content words appear in the cited text, whereas an
-LLM judge would also credit paraphrase. A low local score is therefore evidence
-of a problem; a high one is not proof of perfection.
+## Test sets
 
-## Honest findings
+| File | Use |
+|---|---|
+| `testset_v2.json` | 54 hand-written in-material questions. **Headline numbers.** |
+| `testset_v2_offmaterial.json` | 16 off-material (12 near-miss, 4 trivial). **Headline numbers.** |
+| `testset_smoke.json` | Old templated set. **Smoke only — never reported.** |
 
-Numbers below are from a real run against the local deterministic provider
-(20 in-material queries, 14 off-material).
+The old set asked `what does this statement say: "<verbatim sentence>"` with that
+same sentence as the reference answer, so faithfulness ≈ 1.0 was guaranteed by
+construction and measured nothing.
 
-| Metric | Score | Reading |
-|---|---:|---|
-| Faithfulness | **1.000** | Every answer sentence is drawn from cited text. Expected for the extractive provider; a Gemini run would be a stricter test. |
-| Context recall | **1.000** | Ground-truth units were always retrieved. |
-| Refusal accuracy | **1.000** | 14/14 off-material queries declined. |
-| Citation accuracy | **0.333** | **Weak.** The tutor cites up to 3 units; the test set usually names 1. |
-| Context precision | **0.333** | Same cause as above. |
-| Answer relevancy | **0.436** | **Weak.** Answers concatenate the top passages, so they are longer than the question needs. |
+Ground truth in v2 is keyed by `{page, snippet}` and resolved to live ObjectIds at
+run time, so it survives reseeding.
 
-### Two runners, two context-precision numbers — on purpose
+## Personalization
 
-`run_eval.py` and the in-app `POST /api/eval/run` report different
-`context_precision` (0.333 vs 0.143). They are not contradicting each other; they
-measure different things:
-
-- **`run_eval.py`** scores *cited* units against ground truth.
-- **in-app runner** scores *all retrieved* units (top-k = 8) against ground truth.
-
-Since most test entries name one ground-truth unit, scoring all 8 retrieved units
-gives a lower number by construction. The in-app value is the stricter measure and
-is what the landing page displays. Both are labelled, neither is hidden.
-
-Two of these were bugs we found and fixed rather than papered over:
-
-1. **Faithfulness first measured 0.467.** The harness was scoring answers
-   against the 240-character citation excerpt the API returns for display, not
-   the full unit text — so any answer drawing on a longer passage was marked
-   unfaithful. Fixed; it is now scored against full unit text.
-2. **Refusal accuracy first measured 0.357.** Nine of fourteen off-material
-   queries had never run: they hit the tutor rate limit and returned HTTP 429.
-   Counting transport errors as refusal failures understates the system. The
-   harness now paces requests, retries on 429 with backoff, and reports
-   `off_material_errors` separately.
-
-### Known weaknesses we did not fix
-
-- **Citation precision is the weakest measured number.** The tutor cites every
-  unit it drew from. When the test set names a single ground-truth unit but the
-  answer legitimately draws on three related passages, precision is capped near
-  1/3. Making this honest would mean scoring against the full set of
-  *supporting* units rather than one — that is a better metric, but we did not
-  want to reshape the test set after seeing scores.
-- **Answer relevancy is mediocre** because extractive answers are verbose. A
-  generative provider should score higher here; we have not measured that.
-- **`run_eval.py` paces at ~2.2 s/query**, so a 74-query run takes ~3 minutes.
+`simulate_students.py` (Python, parity-tested) and
+`server/scripts/simulate_students.ts` (imports the **real** learner-model code —
+this is the authoritative one).

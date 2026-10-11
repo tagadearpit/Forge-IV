@@ -115,3 +115,6 @@
 @layer utilities {
   .grid-8 > * + * { margin-top: 0.5rem; }
 }
+
+/* KaTeX for LaTeX in tutor answers and quiz explanations. */
+@import 'katex/dist/katex.min.css';

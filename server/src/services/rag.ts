@@ -51,7 +51,18 @@ export interface Citation {
 
 export type GroundingStatus = 'full' | 'partial' | 'outside_material';
 
+export interface RetrievedContext {
+  unitId: string;
+  sourceTitle: string;
+  /** FULL unit text. Never the 240-char display excerpt. */
+  text: string;
+  similarity: number;
+  location: RetrievedUnit['location'];
+}
+
 export interface TutorAnswer {
+  /** Present only when includeContexts was requested. Evaluation-only. */
+  retrievedContexts?: RetrievedContext[];
   answer: string;
   citations: Citation[];
   groundingStatus: GroundingStatus;
@@ -178,6 +189,50 @@ export function lexicalOverlap(question: string, hits: RetrievedUnit[]): number 
   return Number((hit / q.size).toFixed(4));
 }
 
+/**
+ * IDF-weighted question coverage over the retrieved excerpts.
+ *
+ * Plain coverage counts ANY shared content word, which measures two different
+ * things at once. Measured on test set v2, unweighted coverage produced BOTH
+ * failure modes at once:
+ *   - false accepts: "What is a TLB shootdown...?" matched on the single
+ *     ubiquitous term "TLB" even though shootdowns are nowhere in the material.
+ *   - false declines: paraphrased questions ("Why do pointer-heavy loops suffer
+ *     more than arithmetic-heavy ones?") share few literal words with the
+ *     source, so coverage stayed below threshold despite being fully answerable.
+ *
+ * Weighting each question term by how RARE it is across the retrieved set fixes
+ * both without loosening the gate: matching on "pointer" or "chasing" (which
+ * appear in one passage) counts for far more than matching "TLB" (which appears
+ * in most of them). The gate still requires real topical contact; it just stops
+ * rewarding generic vocabulary.
+ *
+ * `df` is the number of retrieved units containing the term, so a term in every
+ * unit scores ~0 and a term in exactly one scores high.
+ */
+export function idfWeightedOverlap(question: string, hits: RetrievedUnit[]): number {
+  const terms = [...new Set(contentWords(question))];
+  if (!terms.length || !hits.length) return 0;
+
+  const docs = hits.slice(0, 5).map((h) => new Set(contentWords(h.text)));
+  const N = docs.length;
+  if (!N) return 0;
+
+  let matchedWeight = 0;
+  let totalWeight = 0;
+
+  for (const t of terms) {
+    const df = docs.reduce((n, d) => n + (d.has(t) ? 1 : 0), 0);
+    // Smoothed IDF; a term in every retrieved unit contributes ~0.
+    const weight = Math.log((N + 1) / (df + 0.5));
+    totalWeight += weight;
+    if (df > 0) matchedWeight += weight;
+  }
+
+  if (totalWeight <= 0) return 0;
+  return Number((matchedWeight / totalWeight).toFixed(4));
+}
+
 /** Grounding decision: either signal is sufficient to attempt an answer. */
 export function isGrounded(topSimilarity: number, overlap: number): boolean {
   const t = groundingThresholds();
@@ -207,6 +262,12 @@ export async function answerQuestion(
 
   // No material at all, or nothing close enough → decline BEFORE calling the
   // model, so it cannot invent anything.
+  // Uses the UNWEIGHTED coverage signal. An IDF-weighted variant was built and
+  // measured (idfWeightedOverlap, retained below); on test set v2 it improved
+  // near-miss refusal 0.50 -> 0.58 but worsened over-refusal 0.222 -> 0.259,
+  // because the 0.55 threshold is calibrated for the unweighted distribution.
+  // Adopting it would have been an un-calibrated threshold swap, so the gate
+  // stays on the signal it was calibrated against. See README "Evaluation".
   const overlap = lexicalOverlap(question, hits);
   if (!hits.length || !isGrounded(hits[0].similarity, overlap)) {
     audit.declined = true;

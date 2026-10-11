@@ -47,9 +47,12 @@ const EXT_TYPE: Record<string, string> = {
 const upload = multer({
   storage: multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, env.UPLOAD_DIR),
-    filename: (req, file, cb) => {
+    filename: (_req, file, cb) => {
+      // multer 2.x no longer guarantees `req.params` is populated inside the
+      // storage callback, so the filename must not depend on it. A timestamp
+      // plus the sanitised original name is unique enough and carries no PII.
       const safe = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80);
-      cb(null, `${req.params?.userId ?? 'anon'}-${Date.now()}-${safe}`);
+      cb(null, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safe}`);
     },
   }),
   limits: { fileSize: env.MAX_UPLOAD_MB * 1024 * 1024, files: 1 },

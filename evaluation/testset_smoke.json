@@ -1,7 +1,7 @@
 {
-  "version": "v1",
+  "version": "smoke",
   "generatedFrom": [
-    "CS 241 — Systems Programming: Memory & Concurrency"
+    "CS 241 \u2014 Systems Programming: Memory & Concurrency"
   ],
   "topics": [
     "The Virtual Memory Subsystem",
@@ -13,8 +13,8 @@
   "note": "Ground-truth unit IDs are derived from the real seeded corpus, so context recall and citation accuracy are computed against units that really exist.",
   "entries": [
     {
-      "question": "According to your material, what does this statement say: \"CS 241 — Systems Programming Lecture 7: Memory Management, Caching and Concurrency This handout accompanies Lecture 7.\"?",
-      "referenceAnswer": "CS 241 — Systems Programming Lecture 7: Memory Management, Caching and Concurrency This handout accompanies Lecture 7.",
+      "question": "According to your material, what does this statement say: \"CS 241 \u2014 Systems Programming Lecture 7: Memory Management, Caching and Concurrency This handout accompanies Lecture 7.\"?",
+      "referenceAnswer": "CS 241 \u2014 Systems Programming Lecture 7: Memory Management, Caching and Concurrency This handout accompanies Lecture 7.",
       "groundTruthUnitIds": [
         "6acb29f8af78efff662fc90d"
       ],
@@ -22,7 +22,7 @@
     },
     {
       "question": "In the uploaded material, what is described regarding 241 systems programming lecture?",
-      "referenceAnswer": "CS 241 — Systems Programming Lecture 7: Memory Management, Caching and Concurrency This handout accompanies Lecture 7.",
+      "referenceAnswer": "CS 241 \u2014 Systems Programming Lecture 7: Memory Management, Caching and Concurrency This handout accompanies Lecture 7.",
       "groundTruthUnitIds": [
         "6acb29f8af78efff662fc90d"
       ],
@@ -462,7 +462,7 @@
     },
     {
       "question": "Summarise what your material covers about The Virtual Memory Subsystem.",
-      "referenceAnswer": "CS 241 — Systems Programming Lecture 7: Memory Management, Caching and Concurrency This handout accompanies Lecture 7. It covers the virtual memory subsystem, the cache hierarchy, and the concurrency primitives that the rest of the course builds on.",
+      "referenceAnswer": "CS 241 \u2014 Systems Programming Lecture 7: Memory Management, Caching and Concurrency This handout accompanies Lecture 7. It covers the virtual memory subsystem, the cache hierarchy, and the concurrency primitives that the rest of the course builds on.",
       "groundTruthUnitIds": [
         "6acb29f8af78efff662fc90d",
         "6acb29f8af78efff662fc90e",
@@ -472,7 +472,7 @@
     },
     {
       "question": "Summarise what your material covers about Page Faults And Replacement.",
-      "referenceAnswer": "CS 241 — Systems Programming Lecture 7: Memory Management, Caching and Concurrency This handout accompanies Lecture 7. It covers the virtual memory subsystem, the cache hierarchy, and the concurrency primitives that the rest of the course builds on.",
+      "referenceAnswer": "CS 241 \u2014 Systems Programming Lecture 7: Memory Management, Caching and Concurrency This handout accompanies Lecture 7. It covers the virtual memory subsystem, the cache hierarchy, and the concurrency primitives that the rest of the course builds on.",
       "groundTruthUnitIds": [
         "6acb29f8af78efff662fc90d",
         "6acb29f8af78efff662fc90e",
@@ -482,7 +482,7 @@
     },
     {
       "question": "Summarise what your material covers about The Cache Hierarchy.",
-      "referenceAnswer": "CS 241 — Systems Programming Lecture 7: Memory Management, Caching and Concurrency This handout accompanies Lecture 7. It covers the virtual memory subsystem, the cache hierarchy, and the concurrency primitives that the rest of the course builds on.",
+      "referenceAnswer": "CS 241 \u2014 Systems Programming Lecture 7: Memory Management, Caching and Concurrency This handout accompanies Lecture 7. It covers the virtual memory subsystem, the cache hierarchy, and the concurrency primitives that the rest of the course builds on.",
       "groundTruthUnitIds": [
         "6acb29f8af78efff662fc90d",
         "6acb29f8af78efff662fc90e",
@@ -492,7 +492,7 @@
     },
     {
       "question": "Summarise what your material covers about Concurrency Primitives.",
-      "referenceAnswer": "CS 241 — Systems Programming Lecture 7: Memory Management, Caching and Concurrency This handout accompanies Lecture 7. It covers the virtual memory subsystem, the cache hierarchy, and the concurrency primitives that the rest of the course builds on.",
+      "referenceAnswer": "CS 241 \u2014 Systems Programming Lecture 7: Memory Management, Caching and Concurrency This handout accompanies Lecture 7. It covers the virtual memory subsystem, the cache hierarchy, and the concurrency primitives that the rest of the course builds on.",
       "groundTruthUnitIds": [
         "6acb29f8af78efff662fc90d",
         "6acb29f8af78efff662fc911",
@@ -584,5 +584,7 @@
       "groundTruthUnitIds": [],
       "isOffMaterial": true
     }
-  ]
+  ],
+  "CLASSIFICATION": "SMOKE TEST \u2014 DO NOT REPORT AS HEADLINE NUMBERS",
+  "why_not_headline": "56 of the 60 in-material entries are the template \"According to your material, what does this statement say: \\\"<verbatim sentence>\\\"\", whose referenceAnswer is that same sentence. Faithfulness and context recall of 1.000 are close to guaranteed by construction and measure nothing. Superseded by testset_v2.json."
 }

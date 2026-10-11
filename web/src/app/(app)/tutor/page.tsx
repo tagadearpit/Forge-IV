@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { api, type Citation, type TutorAnswer } from '@/lib/api';
 import { useToast, Button } from '@/components/ui';
+import { Markdown } from '@/components/markdown';
 import { cn } from '@/lib/utils';
 import { SourceViewer } from '@/components/source-viewer';
 
@@ -23,6 +24,26 @@ const SUGGESTIONS = [
   'What is the mass of a proton?',
 ];
 
+/** Minimal shape of the Web Speech API we use; kept local so TS does not need
+ *  DOM lib types that vary between TS versions. */
+interface SpeechRecognitionLike {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  start(): void;
+  stop(): void;
+  abort(): void;
+  onresult: ((e: any) => void) | null;
+  onerror: ((e: any) => void) | null;
+  onend: (() => void) | null;
+}
+
+function getSpeechRecognition(): (new () => SpeechRecognitionLike) | null {
+  if (typeof window === 'undefined') return null;
+  const w = window as any;
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
+}
+
 export default function TutorPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [question, setQuestion] = useState('');
@@ -33,6 +54,78 @@ export default function TutorPage() {
   const [openCitation, setOpenCitation] = useState<Citation | null>(null);
   const toast = useToast();
   const endRef = useRef<HTMLDivElement>(null);
+
+  // ---- voice input (Web Speech API) ----
+  const [listening, setListening] = useState(false);
+  const [interim, setInterim] = useState('');
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+
+  const stopListening = useCallback(() => {
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+    setListening(false);
+    setInterim('');
+  }, []);
+
+  const startListening = useCallback(() => {
+    const Ctor = getSpeechRecognition();
+    if (!Ctor) {
+      toast.push(
+        'info',
+        'Voice input is not supported in this browser. Chrome or Edge support SpeechRecognition; Firefox does not.'
+      );
+      return;
+    }
+    try {
+      const rec = new Ctor();
+      rec.lang = language === 'hi' ? 'hi-IN' : 'en-IN';
+      rec.interimResults = true;
+      rec.continuous = false;
+
+      rec.onresult = (e: any) => {
+        let finalText = '';
+        let interimText = '';
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          const r = e.results[i];
+          const t = r[0]?.transcript ?? '';
+          if (r.isFinal) finalText += t;
+          else interimText += t;
+        }
+        setInterim(interimText);
+        if (finalText) {
+          setQuestion((prev) => (prev ? `${prev} ${finalText}` : finalText).trim());
+          setInterim('');
+        }
+      };
+      rec.onerror = (e: any) => {
+        setListening(false);
+        setInterim('');
+        const code = e?.error ?? 'unknown';
+        const msg =
+          code === 'not-allowed'
+            ? 'Microphone permission was denied. Enable it in your browser settings to use voice input.'
+            : code === 'no-speech'
+              ? 'No speech was detected. Try again.'
+              : `Voice input failed (${code}).`;
+        toast.push('warning', msg);
+      };
+      rec.onend = () => {
+        setListening(false);
+        setInterim('');
+        recognitionRef.current = null;
+      };
+
+      rec.start();
+      recognitionRef.current = rec;
+      setListening(true);
+    } catch (err: any) {
+      setListening(false);
+      toast.push('error', `Could not start voice input: ${err?.message ?? 'unknown error'}`);
+    }
+  }, [language, toast]);
+
+  // Stop recognition if the component unmounts mid-session.
+  useEffect(() => () => recognitionRef.current?.abort(), []);
 
   useEffect(() => {
     api.sources().then((r) => setSources(r.sources.filter((s) => s.status === 'ready'))).catch(() => {});
@@ -227,15 +320,21 @@ export default function TutorPage() {
         />
         <button
           type="button"
-          aria-label="Voice input"
-          onClick={() => toast.push('info', 'Voice input uses the browser Web Speech API — use Chrome or Edge for best support.')}
-          className="btn-secondary px-3"
+          aria-label={listening ? 'Stop voice input' : 'Start voice input'}
+          aria-pressed={listening}
+          onClick={() => (listening ? stopListening() : startListening())}
+          className={cn('btn-secondary px-3', listening && 'border-red-400 text-red-600')}
         >
-          <Mic className="h-4 w-4" aria-hidden />
+          <Mic className={cn('h-4 w-4', listening && 'animate-pulse')} aria-hidden />
         </button>
         <Button type="submit" loading={asking} disabled={!question.trim()} aria-label="Send question">
           <Send className="h-4 w-4" aria-hidden />
         </Button>
+        {interim && (
+          <p className="mt-2 text-sm text-muted" aria-live="polite">
+            <span className="font-medium">Listening…</span> {interim}
+          </p>
+        )}
       </form>
 
       {/* Citation side panel */}
@@ -365,7 +464,7 @@ function AnswerBlock({
             <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
             Not covered by your material
           </p>
-          <p className="text-sm leading-relaxed">{result.answer}</p>
+          <Markdown className="text-sm">{result.answer}</Markdown>
         </div>
       ) : (
         <div className="rounded-xl border-l-4 border-brand-600 bg-brand-50/50 p-4 dark:bg-brand-950/30">
@@ -373,11 +472,7 @@ function AnswerBlock({
             <BookOpen className="h-3.5 w-3.5" aria-hidden />
             From your material
           </p>
-          <div className="space-y-3 text-sm leading-relaxed">
-            {result.answer.split(/\n{2,}/).map((p, i) => (
-              <p key={i}>{p}</p>
-            ))}
-          </div>
+          <Markdown className="text-sm">{result.answer}</Markdown>
 
           {result.citations.length > 0 && (
             <div className="mt-3.5 flex flex-wrap gap-2">

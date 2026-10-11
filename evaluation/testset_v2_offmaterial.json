@@ -1,0 +1,24 @@
+{
+  "version": "v2-offmaterial",
+  "frozen": true,
+  "note": "Off-material probes. NEAR-MISS entries are same-subject-area but genuinely absent from the uploaded course — these are the hard cases. TRIVIAL entries are unrelated to everything and exist only as a sanity floor.",
+  "entries": [
+    { "id": "v2-off-001", "kind": "near_miss", "question": "How does the Banker's algorithm detect a safe state before granting a request?", "referenceAnswer": "Not covered in the uploaded material.", "groundTruthUnits": [], "isOffMaterial": true },
+    { "id": "v2-off-002", "kind": "near_miss", "question": "What is a TLB shootdown and when is it needed on a multi-core system?", "referenceAnswer": "Not covered in the uploaded material.", "groundTruthUnits": [], "isOffMaterial": true },
+    { "id": "v2-off-003", "kind": "near_miss", "question": "Explain how write-back and write-through caching policies differ on a dirty line.", "referenceAnswer": "Not covered in the uploaded material.", "groundTruthUnits": [], "isOffMaterial": true },
+    { "id": "v2-off-004", "kind": "near_miss", "question": "What causes a context switch, and roughly what does one cost?", "referenceAnswer": "Not covered in the uploaded material.", "groundTruthUnits": [], "isOffMaterial": true },
+    { "id": "v2-off-005", "kind": "near_miss", "question": "How does copy-on-write make fork cheap, and what is a COW fault?", "referenceAnswer": "Not covered in the uploaded material.", "groundTruthUnits": [], "isOffMaterial": true },
+    { "id": "v2-off-006", "kind": "near_miss", "question": "What is least-frequently-used caching and how does its policy differ from LRU?", "referenceAnswer": "Not covered in the uploaded material.", "groundTruthUnits": [], "isOffMaterial": true },
+    { "id": "v2-off-007", "kind": "near_miss", "question": "Describe the MESI cache coherence protocol and its states.", "referenceAnswer": "Not covered in the uploaded material.", "groundTruthUnits": [], "isOffMaterial": true },
+    { "id": "v2-off-008", "kind": "near_miss", "question": "How does a semaphore differ from a mutex in the POSIX model?", "referenceAnswer": "Not covered in the uploaded material.", "groundTruthUnits": [], "isOffMaterial": true },
+    { "id": "v2-off-009", "kind": "near_miss", "question": "What is NUMA and how does it change memory placement decisions?", "referenceAnswer": "Not covered in the uploaded material.", "groundTruthUnits": [], "isOffMaterial": true },
+    { "id": "v2-off-010", "kind": "near_miss", "question": "How does the Java Memory Model define safe publication across threads?", "referenceAnswer": "Not covered in the uploaded material.", "groundTruthUnits": [], "isOffMaterial": true },
+    { "id": "v2-off-011", "kind": "near_miss", "question": "What is a futex and how does Linux avoid a syscall in the uncontended case?", "referenceAnswer": "Not covered in the uploaded material.", "groundTruthUnits": [], "isOffMaterial": true },
+    { "id": "v2-off-012", "kind": "near_miss", "question": "How does segmentation differ from paging in how a program's address space is divided?", "referenceAnswer": "Not covered in the uploaded material.", "groundTruthUnits": [], "isOffMaterial": true },
+
+    { "id": "v2-off-101", "kind": "trivial", "question": "What is the capital city of France?", "referenceAnswer": "Not covered in the uploaded material.", "groundTruthUnits": [], "isOffMaterial": true },
+    { "id": "v2-off-102", "kind": "trivial", "question": "Who won the FIFA World Cup in 2022?", "referenceAnswer": "Not covered in the uploaded material.", "groundTruthUnits": [], "isOffMaterial": true },
+    { "id": "v2-off-103", "kind": "trivial", "question": "How do I bake a sourdough loaf at home?", "referenceAnswer": "Not covered in the uploaded material.", "groundTruthUnits": [], "isOffMaterial": true },
+    { "id": "v2-off-104", "kind": "trivial", "question": "What is the boiling point of water at sea level?", "referenceAnswer": "Not covered in the uploaded material.", "groundTruthUnits": [], "isOffMaterial": true }
+  ]
+}

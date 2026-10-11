@@ -16,6 +16,10 @@ import {
   updateStability,
 } from '../utils/bkt';
 import { logEvent } from './events';
+import {
+  selectAdaptiveTopics as selectPolicy,
+  type MasterySnapshot,
+} from './selection';
 
 /**
  * Learner-model service: owns every read/write of per-topic mastery so the BKT
@@ -178,18 +182,27 @@ export async function getMasteryOverview(userId: string): Promise<TopicMasteryVi
 }
 
 /**
- * Topic selection for the next question: prefer the Zone of Proximal
- * Development, then the highest forgetting-curve urgency. Returns at most `n`.
+ * Topic selection for the next question.
+ *
+ * Delegates to the shared, pure policy in services/selection.ts so the
+ * simulation harness exercises the same code path the API uses. This function
+ * only adapts Mastery documents into snapshots.
  */
 export async function selectAdaptiveTopics(userId: string, n = 3): Promise<string[]> {
   const overview = await getMasteryOverview(userId);
-  if (!overview.length) return [];
+  return selectPolicy(toSnapshots(overview), n);
+}
 
-  const zpd = overview.filter((t) => inZPD(t.pLearned));
-  const pool = zpd.length ? zpd : overview.filter((t) => t.band !== 'strong');
-  const source = (pool.length ? pool : overview).slice(0, n);
-
-  return source.map((t) => t.topicId);
+/** Adapts learner-model rows into the snapshot shape the policy expects. */
+export function toSnapshots(rows: TopicMasteryView[]): MasterySnapshot[] {
+  return rows.map((r) => ({
+    topicId: r.topicId,
+    pLearned: r.pLearned,
+    retention: r.retention,
+    attempts: r.attempts,
+    stability: r.stability,
+    daysToExam: r.daysToExam,
+  }));
 }
 
 /** Summary statistics for the dashboard KPI row. */

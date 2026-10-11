@@ -30,18 +30,22 @@ StudyMind fixes three things at once:
 
 ## What is built
 
-| Track D requirement | Status |
-|---|---|
-| 1. Multimodal knowledge base (PDF · PPTX · image · video · audio) | Implemented |
-| 2. Source grounding + refusal | Implemented, calibrated, measured |
-| 3. Adaptive assessment + verification + dedupe | Implemented |
-| 4. Learner model (BKT + forgetting curve) | Implemented |
-| 5. System evaluation (RAGAS or equivalent + personalization) | Implemented |
-| 6a. Course flow map | Implemented |
-| 6b. Revision material (flashcards, summaries) | Implemented |
-| 6c. Study schedule | Implemented |
-| 6d. Hindi / mixed-language tutoring | Implemented |
-| 6e. Audio (mic + TTS) | Implemented (Web Speech API) |
+| Track D requirement | Status | Notes |
+|---|---|---|
+| 1. Multimodal knowledge base | **Partial** | PDF verified end to end. PPTX/image/video/audio code paths exist but are **untested against real files** — see KNOWN_LIMITATIONS §7. |
+| 2. Source grounding + refusal | Implemented | Calibrated and measured. Known over-refusal on paraphrases (22%). |
+| 3. Adaptive assessment + verification + dedupe | Implemented | Numerical answers re-derived in code; misconceptions evidence-linked. |
+| 4. Learner model (BKT + forgetting curve) | Implemented | Real code, exercised by the simulation. |
+| 5. System evaluation | **Partial** | Harness + hand-written test set v2 shipped, but **no real framework has run** (no PyPI access, no judge key). Reports `framework: "none"`. |
+| 6a. Course flow map | Implemented | Deterministic layered SVG graph (not a force-directed layout). |
+| 6b. Revision material | Implemented | Flashcards + summaries. |
+| 6c. Study schedule | Implemented | Weak topics + forgetting curve + days-to-exam. |
+| 6d. Hindi / mixed-language | Implemented | Tutor toggle; voice input switches to `hi-IN`. |
+| 6e. Audio tutoring | **Partial** | TTS read-aloud works via Web Speech API. Mic input uses `webkitSpeechRecognition` — **Chrome/Edge only; Firefox has no fallback beyond a message.** Video/audio *ingestion* is untested. |
+
+**Markdown + LaTeX** rendering is implemented (`react-markdown` + `remark-math` +
+`rehype-katex`) with raw HTML disabled. `docs/KNOWN_LIMITATIONS.md` is the
+authoritative list of gaps.
 
 ---
 
@@ -194,83 +198,116 @@ and BKT discounts it; spaced repetition has no way to say that.
 
 ## Evaluation
 
-Everything is runnable. See **[`evaluation/README.md`](evaluation/README.md)**.
+Everything is runnable. See **`evaluation/README.md`** and
+**`docs/KNOWN_LIMITATIONS.md`**.
 
 ```bash
-python3 evaluation/run_eval.py --limit 30          # retrieval + generation
-python3 evaluation/simulate_students.py            # personalization
+python3 evaluation/run_eval.py            # exits NON-ZERO if no framework ran
+npx tsx scripts/simulate_students.ts     # simulation over the REAL learner-model code
+python3 evaluation/parity_test.py        # legacy Python sim vs TypeScript, 1e-9
 ```
 
-### Measured results
+### ⚠️ No evaluation framework has run
 
-Retrieval and generation, 20 in-material + 14 off-material queries against the
-live API:
+`run_eval.py` reports **`framework: "none"`** and exits **1**.
 
-| Metric | `run_eval.py` | in-app runner |
-|---|---:|---:|
-| Faithfulness | **1.000** | **1.000** |
-| Context recall | **1.000** | **1.000** |
-| Refusal accuracy | **1.000** (14/14) | **1.000** (10/10) |
-| Context precision | 0.333 | 0.143 |
-| Citation accuracy | 0.333 | 0.333 |
-| Answer relevancy | 0.436 | 0.415 |
+This build environment has **no outbound access to PyPI** and **no judge-model
+key**, so RAGAS/DeepEval could not be installed or run. That is an environment
+limitation, not a skipped step. The numbers below are **own metrics** computed
+against ground-truth unit sets, plus clearly separated **deterministic lexical
+proxies** — neither is a framework result.
 
-The two context-precision figures differ because they score different things:
-`run_eval.py` scores *cited* units, the in-app runner scores *all retrieved*
-units (top-k = 8). The in-app number is the stricter one and is what the landing
-page shows.
+### Test set v2 (hand-written, frozen before scoring)
 
-Personalization — 6 sessions × 5 questions × 5 trials, adaptive vs. random:
+54 in-material questions across six styles (conceptual, paraphrase, multi-unit,
+numeric, compare, structure) and 16 off-material (12 **near-miss** — same
+subject, genuinely absent — and 4 trivial). Ground truth is keyed by
+`{page, snippet}` and resolved to live ObjectIds at run time, so it survives
+reseeds. The old templated set survives as `testset_smoke.json` and is
+**excluded** from these numbers.
+
+### Measured — retrieval & grounding (provider: local)
+
+| Metric | Value |
+|---|---:|
+| context recall | **1.000** |
+| citation recall | **0.764** |
+| citation precision | 0.293 |
+| context precision | 0.156 |
+| refusal accuracy — trivial | **1.000** |
+| refusal accuracy — **near-miss** | **0.500** |
+| **false-refusal rate on in-material** | **0.222** (12 of 54) |
+
+Lexical proxies (secondary, not framework metrics): faithfulness 0.889,
+answer relevancy 0.268.
+
+**These numbers are bad in two specific, structural ways**, documented rather
+than tuned away:
+
+- **22% of legitimate questions are wrongly refused.** Every one is a paraphrase
+  or wordy question — the gate's lexical signal keys on literal overlap, which
+  paraphrases lack by construction.
+- **Only half of near-miss questions are refused.** They share one distinctive
+  term with the material (e.g. *"What is a **TLB** shootdown?"* matches on "TLB").
+
+An IDF-weighted coverage variant was built and measured: it improved near-miss
+refusal 0.500 → 0.583 but **worsened** over-refusal 0.222 → 0.259, because the
+0.55 threshold is calibrated for the unweighted distribution. Adopting it would
+have been an un-calibrated threshold swap dressed up as progress, so the gate
+stays on the signal it was calibrated against.
+
+### Measured — personalization (simulated)
 
 | Profile | Adaptive gain | Random gain | Δ |
 |---|---:|---:|---:|
-| strong | 0.497 | 0.448 | +0.049 |
-| weak | 0.418 | 0.182 | **+0.237** |
-| mixed | 0.404 | 0.351 | +0.053 |
-| beginner (late-topic errors) | 0.303 | 0.076 | **+0.227** |
+| strong | 0.359 | 0.288 | +0.071 |
+| weak | 0.086 | 0.101 | **−0.016** |
+| mixed | 0.328 | 0.261 | +0.068 |
+| beginner_err | 0.167 | 0.150 | +0.017 |
+| late_bloomer | 0.340 | 0.330 | +0.011 |
+| erratic | 0.277 | 0.295 | **−0.018** |
 
-Adaptive wins 4/4, concentrated where there is headroom.
+Adaptive wins **4/6** — and *loses* on two profiles. Repetition rate is far
+lower under adaptive (0.007–0.021 vs 0.172).
 
----
+**Simulated students.** This measures the question-selection scheduler, **not
+real students**. The response model was not tuned after seeing results.
+
+> An earlier Python re-implementation of this simulation reported 4/4 wins.
+> Re-running the **real TypeScript learner-model code** produced 4/6. That gap
+> is exactly why the simulation now imports production functions instead of
+> copying them.
 
 ## Honest findings
 
-The rubric grades "rigor and honesty of reported results", so these are stated
-plainly rather than buried.
+The full list lives in **`docs/KNOWN_LIMITATIONS.md`**. The headlines:
 
-**Two bugs we found and fixed rather than reported as scores:**
+- **No real evaluation framework has run** (no PyPI access, no judge key).
+  Reported as `framework: "none"` with a non-zero exit.
+- **The grounding gate over-refuses** (22% false refusals on in-material
+  questions) and **under-refuses near-misses** (50%). Both structural.
+- **Gemini thresholds are not calibrated**, so the Gemini gate fails closed.
+- **The Gemini provider has never made a live API call** — unit-tested against a
+  fake provider only.
+- **Video/audio/PPTX ingestion is untested** against real files.
+- **Personalization evidence is simulated**, not real students.
+- **Login returns distinct 404/401**, enabling account enumeration. Intentional
+  per the brief; rate-limited but not eliminated.
 
-- Faithfulness first measured **0.467**. The harness was scoring answers against
-  the 240-character citation excerpt the API returns for display, not the full
-  unit text — so any answer drawing on a longer passage looked unfaithful.
-- Refusal accuracy first measured **0.357**. Nine of fourteen off-material queries
-  had never actually run; they hit the tutor rate limit and returned HTTP 429.
-  Counting transport errors as refusal failures understates the system. The
-  harness now paces, retries with backoff, and reports errors separately.
+### `npm audit --omit=dev`
 
-**Weaknesses we did not fix:**
+```
+2 vulnerabilities (1 high, 1 critical)
+  next     >=9.3.4-canary.0 - <=16.3.0-preview.10   critical (direct)
+           DoS via Image Optimizer; request deserialization DoS;
+           HTTP request smuggling in rewrites
+  postcss  <=8.5.22                                 high     (transitive, via next)
+           XSS via Unescaped </style>; arbitrary file read via sourceMappingURL
+```
 
-- **Citation accuracy (0.333) is our weakest number.** The tutor cites every unit
-  it drew from; the test set usually names one ground-truth unit. When an answer
-  legitimately draws on three related passages, precision is capped near 1/3. A
-  fairer metric would score against the full set of supporting units — but we did
-  not want to reshape the test set after seeing scores.
-- **Answer relevancy (0.436) is mediocre** because extractive answers are longer
-  than the question needs. A generative provider should score higher; we have not
-  measured that.
-- **The personalization numbers are simulated.** They measure the
-  question-selection scheduler under a stated response model. They are **not**
-  evidence of real-world learning gain.
-- **Repetition is higher under adaptive selection** (0.40 vs 0.19 for weak
-  profiles) — focusing on weak topics produces consecutive same-topic questions.
-  A real trade-off, reported rather than tuned away.
-- **Faithfulness 1.000 is measured against an extractive provider** that cannot
-  generate anything outside retrieved text. It proves the guard, but a Gemini run
-  is the stricter test.
-- **Video/audio ingestion is verified structurally, not end-to-end** — it needs
-  ffmpeg plus a real transcription API.
-
----
+Both are fixed only by moving to **Next.js 16** — a major breaking upgrade that
+was **not applied**, because shipping an unvalidated major upgrade is worse than
+a documented advisory. Multer was upgraded 1.x → 2.4.0 (no advisory).
 
 ## Prior approaches considered
 
@@ -306,7 +343,8 @@ plainly rather than buried.
 
 ```bash
 cd server
-bash scripts/verify.sh      # 38/38
+npm test                    # 33 unit tests
+bash scripts/verify.sh      # 47 end-to-end checks
 ```
 
 Covers auth error copy, page-number preservation, grounded citations,
@@ -318,6 +356,7 @@ Bugs this suite caught during the build, each fixed:
 
 | Bug | Symptom |
 |---|---|
+| `cosineSimilarity` compared `min(len)` components | Retrieval silently returned noise under Gemini (768-dim vs 256-dim) |
 | `$group {_id:'$day'}` read as `r.day` | Study streak always 0 |
 | Aggregation `$match` does not auto-cast ObjectId | Streak query matched nothing |
 | Array methods chained onto a `reduce` result | Runtime `TypeError` in topic clustering |
@@ -325,6 +364,11 @@ Bugs this suite caught during the build, each fixed:
 | `hasEOL` not set by pdf-parse | Whole PDF page ingested as one line; headings lost |
 | pdf.js text runs lack trailing spaces | Words fused: "ProgrammingLecture" |
 | Font encoding undeclared | Em-dash decoded as control char U+0097 |
+| `numericTolerance` returned a constant 0.01 | A 12000 answer was graded with exact equality |
+| `applyOp` checked `a===0` for division | `5/0` returned `Infinity` |
+| Module-level `unitTopicMap` | Two concurrent users could get each other's topic tags |
+| `testset.json` is an object, not an array | In-app eval crashed on `entries.slice()` |
+| Division guard in eval harness | HTTP 429s were counted as refusal failures, not errors |
 
 ---
 
