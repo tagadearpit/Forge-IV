@@ -390,15 +390,31 @@ Forge-IV/
 
 ## Deployment
 
-**Backend (Replit)** — import the repo, set `server/.env` values, run
-`npm install && npm run build -w server && npm start -w server`. Binds
-`0.0.0.0:$PORT`.
+**[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)** has the full walkthrough.
 
-**Frontend (Vercel)** — set root directory to `web`, set
-`NEXT_PUBLIC_API_URL` to the Replit URL, deploy.
+Deploy in this order — **Atlas → Vercel → Replit** — because Replit needs the
+Vercel URL for `CLIENT_ORIGIN`:
 
-Set `CLIENT_ORIGIN` to the Vercel URL on the backend, or CORS will reject the
-browser.
+| Platform | Key settings |
+|---|---|
+| **MongoDB Atlas** | M0 cluster · user `studymind` (Read/Write) · Network Access `0.0.0.0/0` (Replit egress IPs are dynamic — see the warning) · copy the `mongodb+srv://` string |
+| **Vercel** | Root Directory **`web`** · Next.js · build `npm run build` · output `.next` · env `NEXT_PUBLIC_API_URL` |
+| **Replit** | Import branch `feat/studymind-backend` · `.replit` already runs install→build→start · port 3001→80 · secrets `MONGODB_URI`, `JWT_SECRET`, `CLIENT_ORIGIN`, `NODE_ENV=production` |
+
+`.replit` and `web/vercel.json` are committed, so the Run/Deploy buttons work
+with no manual config.
+
+Traps worth knowing before you start:
+- `NEXT_PUBLIC_*` is **inlined at build time** — change it and you must
+  **redeploy**, not restart.
+- `CLIENT_ORIGIN` must match the Vercel origin exactly (scheme, host, no
+  trailing slash) or every browser call returns `403 CORS_DENIED`.
+- Atlas passwords must be **URL-encoded**; a raw `@` breaks the URI silently.
+
+Seed the deployed DB once, otherwise there's nothing to see:
+```bash
+cd server && MONGODB_URI="mongodb+srv://..." JWT_SECRET="..." npm run seed
+```
 
 ---
 
