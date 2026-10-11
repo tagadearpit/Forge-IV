@@ -216,7 +216,18 @@ export const api = {
   sources: () => apiFetch<{ sources: SourceSummary[] }>('/sources'),
   source: (id: string) => apiFetch<any>(`/sources/${id}`),
   deleteSource: (id: string) => apiFetch<void>(`/sources/${id}`, { method: 'DELETE' }),
-  sourceFileUrl: (id: string) => `${API_URL}/api/sources/${id}/file`,
+  /**
+   * Exchanges the login JWT for a 5-minute, single-source file token and returns
+   * a ready-to-use URL. Media elements cannot send an Authorization header, so
+   * this is how <iframe>/<video>/<audio> get access — WITHOUT ever putting the
+   * long-lived login JWT in a URL.
+   */
+  sourceFileUrl: async (id: string): Promise<string> => {
+    const res = await apiFetch<{ url: string; expiresInSec: number }>(`/sources/${id}/file-token`, {
+      method: 'POST',
+    });
+    return `${API_URL}${res.url}`;
+  },
 
   uploadSource: (form: FormData, onProgress?: (pct: number) => void) =>
     uploadWithProgress('/sources', form, onProgress),

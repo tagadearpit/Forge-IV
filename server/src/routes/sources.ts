@@ -8,7 +8,7 @@ import { Unit } from '../models/Unit';
 import { Topic } from '../models/Topic';
 import { env } from '../config/env';
 import { ApiError, asyncHandler } from '../middleware/error';
-import { requireAuth, AuthedRequest } from '../middleware/auth';
+import { requireAuth, signFileToken, verifyFileToken, AuthedRequest } from '../middleware/auth';
 import { heavyLimiter } from '../middleware/rateLimit';
 import { ingestSource } from '../services/ingestion';
 import { logEvent } from '../services/events';
@@ -228,11 +228,59 @@ router.get(
 
 /* -------------------------- GET /sources/:id/file ---------------------- */
 
-router.get(
-  '/:id/file',
+/**
+ * Issues a 5-minute, single-source file token for use in <iframe>/<video>/<audio>
+ * src URLs. The long-lived login JWT is NEVER placed in a URL.
+ */
+router.post(
+  '/:id/file-token',
   requireAuth,
   asyncHandler(async (req: AuthedRequest, res) => {
-    const source = await Source.findOne({ _id: req.params.id, userId: req.userId }).lean();
+    const source = await Source.findOne({ _id: req.params.id, userId: req.userId })
+      .select('fileUrl')
+      .lean();
+    if (!source) throw new ApiError(404, 'SOURCE_NOT_FOUND', 'That source does not exist.');
+
+    const filePath = path.join(env.UPLOAD_DIR, path.basename(source.fileUrl));
+    if (!fs.existsSync(filePath)) {
+      throw new ApiError(404, 'FILE_MISSING', 'The original file is no longer available on the server.');
+    }
+
+    const token = signFileToken(req.userId!, req.params.id, 300);
+    res.json({
+      url: `/api/sources/${req.params.id}/file?t=${encodeURIComponent(token)}`,
+      expiresInSec: 300,
+    });
+  })
+);
+
+/**
+ * Streams the original file.
+ *
+ * Accepts EITHER the normal `Authorization: Bearer` header OR `?t=<file-token>`,
+ * because media elements cannot send headers. Range requests are supported so
+ * <video>/<audio> can seek.
+ */
+router.get(
+  '/:id/file',
+  asyncHandler(async (req: AuthedRequest, res) => {
+    // Resolve the caller from EITHER transport, then scope the lookup to them.
+    const header = req.headers.authorization?.startsWith('Bearer ')
+      ? req.headers.authorization.slice(7).trim()
+      : undefined;
+    const raw = header ?? (req.query.t as string | undefined);
+    const payload = verifyFileToken(raw, req.params.id);
+    if (!payload) {
+      throw new ApiError(
+        401,
+        'FILE_UNAUTHORISED',
+        'A valid file token is required to stream this file.'
+      );
+    }
+
+    const source = await Source.findOne({ _id: req.params.id, userId: payload.sub })
+      .select('fileUrl mimeType originalName')
+      .lean();
     if (!source) throw new ApiError(404, 'SOURCE_NOT_FOUND', 'That source does not exist.');
 
     const filePath = path.join(env.UPLOAD_DIR, path.basename(source.fileUrl));
@@ -242,6 +290,34 @@ router.get(
 
     res.setHeader('Content-Type', source.mimeType || 'application/octet-stream');
     res.setHeader('Content-Disposition', `inline; filename="${source.originalName}"`);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    // Deliberately NO X-Frame-Options and no CSP frame-ancestors: the Vercel
+    // origin frames this URL in an <iframe>. Scope is enforced by the token.
+
+    // Range support so <video>/<audio> can seek.
+    const range = req.headers.range;
+    if (range) {
+      const stat = fs.statSync(filePath);
+      const m = /bytes=(\d*)-(\d*)/.exec(range);
+      if (m) {
+        const size = stat.size;
+        const start = m[1] ? parseInt(m[1], 10) : 0;
+        const end = m[2] ? parseInt(m[2], 10) : size - 1;
+        if (!Number.isNaN(start) && start < size && end >= start) {
+          res.status(206);
+          res.setHeader('Content-Range', `bytes ${start}-${Math.min(end, size - 1)}/${size}`);
+          res.setHeader('Accept-Ranges', 'bytes');
+          res.setHeader('Content-Length', String(Math.min(end, size - 1) - start + 1));
+          fs.createReadStream(filePath, { start, end: Math.min(end, size - 1) }).pipe(res);
+          return;
+        }
+        res.status(416).setHeader('Content-Range', `bytes */${size}`);
+        res.end();
+        return;
+      }
+    }
+
+    res.setHeader('Accept-Ranges', 'bytes');
     fs.createReadStream(filePath).pipe(res);
   })
 );

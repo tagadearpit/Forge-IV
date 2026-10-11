@@ -7,6 +7,7 @@ import {
 import { api, type Citation, type TutorAnswer } from '@/lib/api';
 import { useToast, Button } from '@/components/ui';
 import { cn } from '@/lib/utils';
+import { SourceViewer } from '@/components/source-viewer';
 
 interface Message {
   id: string;
@@ -257,8 +258,23 @@ export default function TutorPage() {
               </button>
             </div>
 
-            <div className="mt-5 rounded-xl border border-[color:rgb(var(--border))] bg-[color:rgb(var(--surface))] p-4">
-              <p className="text-sm leading-relaxed">{openCitation.excerpt}</p>
+            {/* FIX 3: the citation panel now shows the ACTUAL source at the
+                cited location, not only a text excerpt. */}
+            <div className="mt-5">
+              <SourceViewer
+                key={`${openCitation.unitId}-${openCitation.location?.page ?? openCitation.location?.slide ?? openCitation.location?.startSec ?? 'x'}`}
+                source={{
+                  id: openCitation.sourceId,
+                  type: openCitation.sourceTitle && /\.(mp4|mp3)/i.test(openCitation.sourceTitle) ? 'video' : 'pdf',
+                  title: openCitation.sourceTitle,
+                }}
+                location={openCitation.location}
+              />
+            </div>
+
+            <div className="mt-4 rounded-xl border border-[color:rgb(var(--border))] bg-[color:rgb(var(--surface))] p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted">Cited excerpt</p>
+              <p className="mt-1.5 text-sm leading-relaxed">{openCitation.excerpt}</p>
             </div>
 
             <dl className="mt-5 space-y-2 text-sm">

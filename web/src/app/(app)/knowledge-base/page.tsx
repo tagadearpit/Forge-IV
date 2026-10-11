@@ -1,13 +1,15 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Upload, FileText, Presentation, Image as ImageIcon, Video, Music, File,
-  Trash2, CheckCircle2, XCircle, Loader2, Clock, FolderTree, AlertTriangle,
+  Trash2, Loader2, Clock, FolderTree, AlertTriangle,
 } from 'lucide-react';
-import { api, API_URL, type SourceSummary } from '@/lib/api';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { api, type SourceSummary } from '@/lib/api';
 import { Button, EmptyState, ErrorState, Skeleton, useToast, Tabs } from '@/components/ui';
 import { cn, formatDate, formatTimestamp } from '@/lib/utils';
+import { SourceViewer, TranscriptSegment } from '@/components/source-viewer';
 
 const ICON: Record<string, React.ComponentType<{ className?: string }>> = {
   pdf: FileText,
@@ -26,7 +28,7 @@ const STATUS_STYLE: Record<string, string> = {
   failed: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
 };
 
-export default function KnowledgeBasePage() {
+function KnowledgeBaseInner() {
   const [sources, setSources] = useState<SourceSummary[]>([]);
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [dragging, setDragging] = useState(false);
@@ -34,8 +36,24 @@ export default function KnowledgeBasePage() {
   const [selected, setSelected] = useState<any>(null);
   const [detail, setDetail] = useState<any>(null);
   const [tab, setTab] = useState<'units' | 'topics'>('units');
+  const [activeUnitId, setActiveUnitId] = useState<string | null>(null);
+  const [seekSec, setSeekSec] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // FIX 3: citation chips link here as /knowledge-base?source=X&unit=Y.
+  // Previously these params were never read, so a citation opened the page but
+  // did not show the cited unit.
+  const urlSource = searchParams.get('source');
+  const urlUnit = searchParams.get('unit');
+
+  useEffect(() => {
+    if (urlSource && urlSource !== selected) void openSource(urlSource, urlUnit ?? undefined);
+    // Only react to a change of the deep-link target.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlSource, urlUnit]);
 
   const load = useCallback(async () => {
     setState('loading');
@@ -75,13 +93,33 @@ export default function KnowledgeBasePage() {
     }
   };
 
-  const openSource = async (id: string) => {
+  const openSource = async (id: string, unitId?: string) => {
     try {
-      setDetail(await api.source(id));
+      const d = await api.source(id);
+      setDetail(d);
+      setSelected(id);
+      if (unitId) setActiveUnitId(unitId);
+      // Deep-link: scroll the cited unit into view once the DOM exists.
+      if (unitId) {
+        setTimeout(() => {
+          document.getElementById(`unit-${unitId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 250);
+      }
     } catch (err: any) {
       toast.push('error', err?.message ?? 'Could not open that source.');
     }
   };
+
+  /** Location of the unit the citation points at, used to position the viewer. */
+  const activeLocation = useMemo(() => {
+    if (!detail) return null;
+    if (activeUnitId) {
+      const u = detail.units.find((x: any) => x.id === activeUnitId);
+      if (u?.location) return u.location;
+    }
+    const first = detail.units[0];
+    return first?.location ?? null;
+  }, [detail, activeUnitId]);
 
   const remove = async (id: string, title: string) => {
     if (!confirm(`Delete "${title}"? Its units and topics will be removed too.`)) return;
@@ -275,37 +313,21 @@ export default function KnowledgeBasePage() {
           </div>
 
           <div className="grid gap-0 lg:grid-cols-2">
-            {/* Original content */}
-            <div className="border-b border-[color:rgb(var(--border))] lg:border-b-0 lg:border-r">
-              <div className="bg-[color:rgb(var(--surface))] p-4">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
-                  Original content
-                </p>
-                {['pdf', 'image'].includes(detail.source.type) && (
-                  <iframe
-                    src={api.sourceFileUrl(detail.source.id)}
-                    title={detail.source.title}
-                    className="h-[28rem] w-full rounded-lg border border-[color:rgb(var(--border))] bg-white"
-                  />
-                )}
-                {detail.source.type === 'video' && (
-                  <video
-                    controls
-                    src={api.sourceFileUrl(detail.source.id)}
-                    className="w-full rounded-lg bg-black"
-                  />
-                )}
-                {['audio'].includes(detail.source.type) && (
-                  <audio controls src={api.sourceFileUrl(detail.source.id)} className="w-full" />
-                )}
-                {['pptx', 'text'].includes(detail.source.type) && (
-                  <p className="text-sm text-muted">
-                    {detail.source.type === 'pptx'
-                      ? 'Slide text is shown alongside — open the source to view slides in your slide viewer.'
-                      : 'Plain text source — content units are shown alongside.'}
-                  </p>
-                )}
-              </div>
+            {/* Original content — token-backed so media elements can load */}
+            <div className="border-b border-[color:rgb(var(--border))] p-4 lg:border-b-0 lg:border-r">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                Original content
+              </p>
+              <SourceViewer
+                key={`${detail.source.id}-${activeLocation?.page ?? activeLocation?.slide ?? activeLocation?.startSec ?? 'cover'}`}
+                source={{
+                  id: detail.source.id,
+                  type: detail.source.type,
+                  title: detail.source.title,
+                }}
+                location={activeLocation}
+                seekToSec={seekSec}
+              />
             </div>
 
             {/* Extracted units */}
@@ -326,7 +348,16 @@ export default function KnowledgeBasePage() {
                       <li
                         key={u.id}
                         id={`unit-${u.id}`}
-                        className="rounded-xl border border-[color:rgb(var(--border))] p-3.5"
+                        onClick={() => {
+                          setActiveUnitId(u.id);
+                          if (u.location?.startSec != null) setSeekSec(u.location.startSec);
+                        }}
+                        className={cn(
+                          'cursor-pointer rounded-xl border p-3.5 transition-colors',
+                          activeUnitId === u.id
+                            ? 'border-brand-500 bg-brand-50/60 dark:border-brand-600 dark:bg-brand-950/40'
+                            : 'border-[color:rgb(var(--border))] hover:bg-[color:rgb(var(--surface))]'
+                        )}
                       >
                         <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
                           <LocChip loc={u.location} kind={u.kind} />
@@ -414,5 +445,20 @@ function TopicTree({ topics }: { topics: any[] }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+export default function KnowledgeBasePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="space-y-3">
+          <Skeleton className="h-9 w-64" />
+          <Skeleton className="h-40" />
+        </div>
+      }
+    >
+      <KnowledgeBaseInner />
+    </Suspense>
   );
 }

@@ -250,7 +250,41 @@ GHITS=$(echo "$GRD" | python3 -c "import sys,json;print(len(json.load(sys.stdin)
 [ "${GHITS:-0}" -ge 1 ] && ok "retrieval still returns same-space hits ($GHITS citations)" \
   || bad "retrieval returns no hits — units may be in a foreign embedding space"
 
-head2 "10. STUDY PLAN + REVISION + EVAL"
+head2 "10. FILE TOKENS (Fix 2)"
+# Without a token the file route must refuse (this was the viewer bug).
+CODE=$(curl -s -o /dev/null -w '%{http_code}' "$API/sources/$SRC_ID/file")
+[ "$CODE" = "401" ] && ok "file route without a token → 401" || bad "file 401 without token" "got $CODE"
+
+FILETOK=$(curl -s -X POST "${AUTH[@]}" "$API/sources/$SRC_ID/file-token")
+FT_URL=$(echo "$FILETOK" | python3 -c "import sys,json;print(json.load(sys.stdin)['url'])" 2>/dev/null)
+FT_EXP=$(echo "$FILETOK" | python3 -c "import sys,json;print(json.load(sys.stdin)['expiresInSec'])" 2>/dev/null)
+[ -n "$FT_URL" ] && ok "file token issued (ttl=${FT_EXP}s)" || bad "file token issued" "got $FILETOK"
+echo "$FT_URL" | grep -q "exp\|eyJ" && echo "$FT_URL" | grep -qi "bearer" && bad "long-lived JWT leaked into URL" || ok "URL carries a scoped file token, not a login JWT"
+
+CODE=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:3001$FT_URL")
+[ "$CODE" = "200" ] && ok "valid file token streams the file (200)" || bad "file token 200" "got $CODE"
+
+# A token minted for THIS source must not open a DIFFERENT source.
+OTHER=$(curl -s "${AUTH[@]}" "$API/sources" | python3 -c "
+import sys,json
+s=[x for x in json.load(sys.stdin)['sources'] if x['id']!='$SRC_ID']
+print(s[0]['id'] if s else '')")
+if [ -n "$OTHER" ]; then
+  CODE=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:3001/api/sources/$OTHER/file?$(echo "$FT_URL" | sed 's/.*?t=//')")
+  [ "$CODE" = "401" ] || [ "$CODE" = "403" ] || [ "$CODE" = "404" ] \
+    && ok "token for source A cannot open source B ($CODE)" || bad "cross-source token" "got $CODE"
+else
+  echo "  ⚠️  only one source present; cross-source check skipped"
+fi
+
+CODE=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:3001/api/sources/$SRC_ID/file?t=expired.token.value")
+[ "$CODE" = "401" ] && ok "expired/garbage token → 401" || bad "expired token" "got $CODE"
+
+# Range request must return 206 for seeking.
+RC=$(curl -s -o /dev/null -D - -H 'Range: bytes=0-1023' "http://127.0.0.1:3001$FT_URL" | grep -i "HTTP/" | awk '{print $2}' | tr -d '\r')
+[ "$RC" = "206" ] && ok "Range request → 206 Partial Content" || bad "range 206" "got ${RC:-none}"
+
+head2 "11. STUDY PLAN + REVISION + EVAL"
 CODE=$(curl -s -o /dev/null -w '%{http_code}' "${AUTH[@]}" "$API/study-plan")
 [ "$CODE" = "200" ] && ok "study plan generated" || bad "study plan" "got $CODE"
 TID=$(curl -s "${AUTH[@]}" "$API/sources" | python3 -c "import sys,json;print(json.load(sys.stdin)['sources'][0]['topics'][0] if json.load(open('/dev/null')) else '')" 2>/dev/null || true)
