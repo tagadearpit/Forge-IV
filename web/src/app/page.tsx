@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import {
@@ -8,7 +9,7 @@ import {
   AlertTriangle, CheckCircle2,
 } from 'lucide-react';
 import { SiteHeader, SiteFooter } from '@/components/site-chrome';
-import { HeroArt, ArchitectureDiagram, StepIcon } from '@/components/illustrations';
+import { ArchitectureDiagram, StepIcon } from '@/components/illustrations';
 import { Reveal } from '@/components/ui';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -168,7 +169,30 @@ export default function LandingPage() {
             </div>
 
             <div className="animate-fade-up [animation-delay:120ms]">
-              <HeroArt className="mx-auto w-full max-w-lg" />
+              {/* Artwork generated for this prototype and bundled locally, so it
+                  always renders — no external CDN that could 404 on demo day.
+                  See web/public/images/README.md for provenance. */}
+              <div className="relative mx-auto w-full max-w-lg">
+                <Image
+                  src="/images/hero-grounded-ai.webp"
+                  alt="Translucent document and slide panels tethered by luminous citation lines to a glowing core, representing material grounded to a single knowledge source"
+                  width={1600}
+                  height={1195}
+                  priority
+                  sizes="(max-width: 1024px) 100vw, 560px"
+                  className="w-full rounded-3xl shadow-lift ring-1 ring-white/10"
+                />
+                {/* Floating citation chip echoing the product's real UI. */}
+                <div className="absolute -bottom-5 left-4 flex items-center gap-2 rounded-2xl border border-[color:rgb(var(--border))] bg-[color:rgb(var(--card))] px-3.5 py-2.5 shadow-lift sm:left-8">
+                  <span className="grid h-7 w-7 place-items-center rounded-lg bg-brand-600 text-white">
+                    <BookOpen className="h-3.5 w-3.5" aria-hidden />
+                  </span>
+                  <span className="font-mono text-xs">
+                    <span className="block font-sans text-[11px] font-medium text-muted">Cited source</span>
+                    Lecture 7 · p.42
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </section>

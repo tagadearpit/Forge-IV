@@ -4,6 +4,15 @@
 set -uo pipefail
 
 API="${API:-http://127.0.0.1:3001/api}"
+
+# The novelty guard is permanent by design (an exact repeat is never allowed),
+# so a tiny seeded corpus can genuinely run out of fresh questions after several
+# full runs. Re-seed first so the suite tests the documented demo state rather
+# than a database several hundred questions deep.
+if [ "${RESEED:-1}" = "1" ] && [ -n "${MONGODB_URI:-}" ]; then
+  echo "reseeding demo data (set RESEED=0 to skip)…"
+  (cd "$(dirname "$0")/.." && MONGODB_URI="$MONGODB_URI" npx tsx src/scripts/seed.ts >/dev/null 2>&1) || true
+fi
 PASS=0; FAIL=0
 ok()   { echo "  ✅ $1"; PASS=$((PASS+1)); }
 bad()  { echo "  ❌ $1"; echo "     got: ${2:-}"; FAIL=$((FAIL+1)); }

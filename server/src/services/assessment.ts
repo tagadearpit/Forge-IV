@@ -421,8 +421,21 @@ export async function createAssessment(req: GenerateRequest) {
 
   if (!questions.length) {
     assessment.status = 'failed';
-    assessment.statusReason =
-      rejected[0] ?? 'Could not generate questions from the selected material. Try widening the scope.';
+
+    // Distinguish "no usable material" from "the novelty guard refused every
+    // candidate". They need different user actions, and leaking the internal
+    // rejection text ("near-duplicate... sim 1") tells the user nothing.
+    const allDuplicates = rejected.length > 0 && rejected.every((r) => r.includes('near-duplicate'));
+    const noMaterial = rejected.some((r) => r.includes('no relevant source units'));
+
+    assessment.statusReason = allDuplicates
+      ? 'Every question we could build from this material has already been used in an earlier ' +
+        'assessment. Uploading more material, or studying a different topic, will give you new ones.'
+      : noMaterial
+        ? 'We could not find relevant content in the selected material. Try a different topic or source.'
+        : 'We could not generate verified questions from this material. Try a different scope, or ' +
+          'upload more material.';
+
     await assessment.save();
     return { assessment, questions: [], rejected };
   }
