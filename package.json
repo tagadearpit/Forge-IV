@@ -2,8 +2,11 @@
   "name": "studymind",
   "version": "1.0.0",
   "private": true,
-  "description": "StudyMind — multimodal, source-grounded AI study companion (Multimodal AI Hackathon 2026, Track D)",
-  "workspaces": ["server", "web"],
+  "description": "StudyMind \u2014 multimodal, source-grounded AI study companion (Multimodal AI Hackathon 2026, Track D)",
+  "workspaces": [
+    "server",
+    "web"
+  ],
   "scripts": {
     "dev:server": "npm run dev -w server",
     "dev:web": "npm run dev -w web",
@@ -11,5 +14,8 @@
     "seed": "npm run seed -w server",
     "eval": "python3 evaluation/run_eval.py"
   },
-  "engines": { "node": ">=20" }
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "npm@10.9.3"
 }
