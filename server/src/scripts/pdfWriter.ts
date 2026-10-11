@@ -11,8 +11,37 @@ interface Page {
   lines: string[];
 }
 
-function escapePdf(s: string): string {
-  return s.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+/**
+ * Maps the handful of typographic characters used in the sample course onto
+ * their WinAnsiEncoding bytes. Without this, an em-dash written in UTF-8 is
+ * serialised as a single latin-1 byte 0x14 and comes back out of the extractor
+ * as a control character instead of a dash.
+ */
+const WIN_ANSI: Record<string, number> = {
+  '\u2014': 0x97, // em dash
+  '\u2013': 0x96, // en dash
+  '\u2018': 0x91, // left single quote
+  '\u2019': 0x92, // right single quote / apostrophe
+  '\u201c': 0x93, // left double quote
+  '\u201d': 0x94, // right double quote
+  '\u2022': 0x95, // bullet
+  '\u2026': 0x85, // ellipsis
+  '\u20ac': 0x80, // euro
+};
+
+function escapePdf(input: string): string {
+  let out = '';
+  for (const ch of input) {
+    const code = WIN_ANSI[ch];
+    if (code !== undefined) {
+      // Octal escape keeps the byte unambiguous through Buffer.from(..., 'latin1').
+      out += '\\' + code.toString(8).padStart(3, '0');
+      continue;
+    }
+    const c = ch === '\\' ? '\\\\' : ch === '(' ? '\\(' : ch === ')' ? '\\)' : ch;
+    out += c.charCodeAt(0) > 255 ? '?' : c;
+  }
+  return out;
 }
 
 /**
@@ -92,7 +121,9 @@ export function buildPdf(paragraphs: string[]): Buffer {
     objects.push(`<< /Length ${Buffer.byteLength(s, 'latin1')} >>\nstream\n${s}\nendstream`);
   });
 
-  objects.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
+  // Declaring WinAnsiEncoding is what makes byte 0x97 decode as an em dash
+  // rather than the raw control character U+0097.
+  objects.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
 
   // ---- serialise with a correct xref table ----
   let pdf = '%PDF-1.4\n';

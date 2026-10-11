@@ -72,6 +72,43 @@ export async function extractPdf(filePath: string): Promise<{ units: RawUnit[]; 
   return { units, pageCount: parsed.numpages || pages.length };
 }
 
+/**
+ * Rebuilds line structure from text-run geometry.
+ *
+ * pdf.js reports each text run with a transform matrix; transform[5] is the
+ * baseline Y and transform[4] the X. Grouping runs by baseline and sorting by X
+ * recovers the document's real line breaks. We cannot rely on `hasEOL` here —
+ * pdf-parse does not populate it, so the entire page would otherwise arrive as
+ * one enormous line and all section headings would be lost.
+ */
+function reconstructLines(items: any[]): string {
+  const rows = new Map<number, Array<{ x: number; str: string }>>();
+
+  for (const item of items) {
+    if (typeof item?.str !== 'string' || !item.str) continue;
+    const t = item.transform;
+    if (!Array.isArray(t) || t.length < 6) continue;
+    // Round the baseline so sub-pixel jitter does not split one line in two.
+    const y = Math.round(t[5] as number);
+    const x = (t[4] as number) ?? 0;
+    const row = rows.get(y) ?? [];
+    row.push({ x, str: item.str });
+    rows.set(y, row);
+  }
+
+  // Descending Y = top to bottom on the page.
+  const ordered = [...rows.entries()].sort((a, b) => b[0] - a[0]);
+  return ordered
+    .map(([, runs]) =>
+      runs
+        .sort((a, b) => a.x - b.x)
+        .map((r) => r.str.trim())
+        .filter(Boolean)
+        .join(' ')
+    )
+    .join('\n');
+}
+
 async function perPageText(buf: Buffer): Promise<string[]> {
   try {
     const pdfParse = (await import('pdf-parse')).default as any;
@@ -80,10 +117,11 @@ async function perPageText(buf: Buffer): Promise<string[]> {
       pagerender: async (pageData: any) => {
         try {
           const tc = await pageData.getTextContent();
-          const text = (tc.items ?? [])
-            .map((it: any) => (typeof it.str === 'string' ? it.str : ''))
-            .join(' ');
-          collected.push(text);
+          // Respect pdf.js line-end markers. Joining every text item with a
+          // space destroys the document's line structure, which loses section
+          // headings entirely — and headings are what the topic extractor reads
+          // to build the course structure.
+          collected.push(reconstructLines(tc.items ?? []));
         } catch {
           collected.push('');
         }

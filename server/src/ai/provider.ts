@@ -593,70 +593,113 @@ class LocalProvider implements AIProvider {
   }
 
   /**
-   * Real keyword-based topic extraction: TF-weighted noun-phrase-ish term
-   * frequency across the corpus, grouped into parent topics by lexical overlap.
-   * No network, fully deterministic, and genuinely derived from the text.
+   * Topic extraction, in order of signal quality:
+   *
+   *   1. HEADINGS — lecture material is full of them ("3. PAGE FAULTS AND
+   *      REPLACEMENT"). When present these are the real course structure and
+   *      far better than any statistical guess. Detected as short lines that
+   *      are numbered, ALL-CAPS, or title-case with no terminal punctuation.
+   *
+   *   2. TF-IDF KEYTERMS — for prose with no headings. Weighted by term
+   *      frequency against document frequency, then filtered through a
+   *      stoplist of generic academic / technical filler so we do not surface
+   *      words like "address" or "size" as "topics".
+   *
+   * Neither path invents structure that is not in the text.
    */
   async extractTopics(opts: { texts: string[] }): Promise<TopicExtraction> {
-    const docs = opts.texts.map((t) => contentWords(t));
-    const df = new Map<string, number>();
-    for (const words of docs) {
-      for (const w of new Set(words)) df.set(w, (df.get(w) ?? 0) + 1);
+    const texts = opts.texts;
+
+    // ---- 1. Headings ----
+    const headingCounts = new Map<string, { count: number; summary: string }>();
+    for (const text of texts) {
+      for (const line of (text || '').split(/\n+/)) {
+        const cleaned = line.replace(/\s+/g, ' ').trim();
+        if (!cleaned || cleaned.length > 72) continue;
+        const heading = detectHeading(cleaned);
+        if (!heading) continue;
+        const key = heading.toLowerCase();
+        const prev = headingCounts.get(key);
+        headingCounts.set(key, {
+          count: (prev?.count ?? 0) + 1,
+          summary: prev?.summary ?? cleaned,
+        });
+      }
     }
 
-    // Score terms by corpus frequency, penalising terms that appear everywhere.
+    // A real section heading usually appears exactly ONCE in a handout, so a
+    // "seen at least twice" filter throws away the entire course structure.
+    // Instead: keep repeated headings always, and keep single-occurrence ones
+    // (numbered or clearly title-case) when the corpus yielded several — a
+    // corpus with 2+ independent heading hits has real structure.
+    const entries = [...headingCounts.entries()].sort((a, b) => b[1].count - a[1].count);
+    const headings = entries
+      .filter(([key, v], i) => {
+        if (v.count >= 2) return true;
+        const isNumbered = /^\d+[.]?\s/.test(v.summary) || /^[ivxlc]+[.)]\s/i.test(v.summary);
+        const mostlyTitleCase = key
+          .split(' ')
+          .filter((w) => w.length > 3)
+          .every((w) => /^[A-Z]/.test(w));
+        return isNumbered || (mostlyTitleCase && entries.length >= 2 && i < 8);
+      })
+      .slice(0, 6)
+      .map(([key, v]) => {
+        const words = key.split(' ');
+        // Drop leading numbering: "3. page faults" -> "Page faults".
+        while (words.length && /^\d+[.]?$/.test(words[0])) words.shift();
+        const name = words.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        return {
+          name,
+          summary: v.summary,
+          keyConcepts: [],
+          parentName: null,
+        } satisfies TopicExtraction['topics'][number];
+      });
+
+    if (headings.length >= 2) return { topics: headings };
+
+    // ---- 2. TF-IDF fallback with a generic-term stoplist ----
+    const docs = texts.map((t) => contentWords(t));
+    const df = new Map<string, number>();
+    for (const words of docs) for (const w of new Set(words)) df.set(w, (df.get(w) ?? 0) + 1);
+
     const ranked = [...df.entries()]
-      .filter(([w, c]) => c >= Math.max(2, Math.ceil(docs.length * 0.02)) && w.length > 3)
+      .filter(([w, c]) => c >= 2 && w.length > 4 && !GENERIC_TOPIC_TERMS.has(w))
       .map(([w, c]) => ({ w, c, score: c * (1 - c / Math.max(1, docs.length)) }))
       .sort((a, b) => b.score - a.score)
-      .slice(0, 24);
+      .slice(0, 12);
 
     if (!ranked.length) {
       return {
-        topics: [{ name: 'General Material', summary: 'Uploaded material without a detectable topic structure.', keyConcepts: [] }],
+        topics: [
+          {
+            name: 'General Material',
+            summary: 'Uploaded material without a detectable topic structure.',
+            keyConcepts: [],
+            parentName: null,
+          },
+        ],
       };
     }
 
-    // Cluster ranked terms into up to 6 topics by greedy co-occurrence affinity.
-    const clusters: string[][] = [];
-    const termIndex = new Map<string, number>();
-    ranked.forEach((r) => termIndex.set(r.w, 0));
-    docs.forEach((words) => {
-      const present = words.filter((w) => termIndex.has(w));
-      for (const w of present) {
-        const ci = termIndex.get(w)!;
-        const target = clusters[ci] ?? [];
-        for (const other of present) if (other !== w) target.push(other);
-        clusters[ci] = target;
-      }
-    });
-
     const seen = new Set<string>();
     const topics: TopicExtraction['topics'] = [];
-    for (const [i, r] of ranked.entries()) {
+    for (const r of ranked) {
       if (topics.length >= 6) break;
       const name = toDisplayName(r.w);
       if (seen.has(name)) continue;
       seen.add(name);
-      const neighbours = Object.entries(
-        (clusters[i] ?? []).reduce<Record<string, number>>((acc, w) => {
-          acc[w] = (acc[w] ?? 0) + 1;
-          return acc;
-        }, {})
-      )
-        .filter(([w]) => !seen.has(toDisplayName(w)))
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5)
-        .map(([w]) => toDisplayName(w));
       topics.push({
         name,
-        summary: `Auto-extracted topic covering ${r.w} and ${Math.max(0, r.c - 1)} related occurrence(s) across the uploaded material.`,
-        keyConcepts: neighbours,
+        summary: `Recurring concept across ${r.c} passage(s) of the uploaded material.`,
+        keyConcepts: [],
         parentName: null,
       });
     }
     return { topics };
   }
+
 }
 
 /* ========================================================================== *
@@ -687,6 +730,64 @@ function pickSalientTerm(sentence: string, terms: string[]): string | null {
   candidates.sort((a, b) => b.length - a.length);
   return candidates[0];
 }
+
+/**
+ * Returns a normalised heading if the line looks like one, else null.
+ * Lecture/handout structure lives in exactly these three shapes.
+ */
+function detectHeading(line: string): string | null {
+  // Reject lines that are clearly prose.
+  if (/[.!?]$/.test(line) && line.split(/\s+/).length > 8) return null;
+
+  const numbered = line.match(/^(?:\d+|[IVXLC]+)[.)]\s+(.{3,})$/);
+  if (numbered) return numbered[1];
+
+  const words = line.split(/\s+/);
+  if (words.length > 9) return null;
+
+  // ALL CAPS heading.
+  const letters = line.replace(/[^A-Za-z]/g, '');
+  if (letters.length >= 4 && letters === letters.toUpperCase()) return line;
+
+  // Title Case heading.
+  const significant = words.filter((w) => w.length > 3);
+  if (significant.length >= 2 && significant.every((w) => /^[A-Z]/.test(w))) return line;
+
+  return null;
+}
+
+/**
+ * Terms that carry no topical meaning — generic academic scaffolding and
+ * programming filler. Left in, they dominate TF-IDF and produce "topics" like
+ * "Address" or "Size", which is worse than admitting no structure was found.
+ */
+const GENERIC_TOPIC_TERMS = new Set(
+  `address size value number level type form order term result number point part case line
+   name time work group system information example figure table section chapter page figure
+   using used also often many however therefore thus hence given based allow require need
+   include includes including provide provides provided consider considered follow follows
+   define defined defines describe described call calls called return returns returned
+   simple simply common complex general specific local global static public private
+   start starts started begin begins end ends first second third next previous last current
+   note notes important better best good high low large small long short new old able
+   access add allow apply approach argument array attribute available basic binary block
+   branch buffer byte cache capacity channel char check class clear code compute constant
+   copy count create data default delete device direct disk drive element else empty entry
+   error event field file flag float format free function handle header hit index init input
+   integer invalid item key keyword label length limit link list load log lookup loop mark
+   memory message method mode module move node null object offset open operation output page
+   pair parse path pattern pending pixel plan point policy position prefix process program
+   queue range read ready record reference region release request reset resource result
+   return right role root rule run save scan schedule scope search seek segment select
+   send set show signal size space split stack stage stamp start state step stop storage
+   store string structure style subject success support switch symbol sync table target
+   task term test text thread time token total track tree unit unknown update usage valid
+   value variable version view wait walk watch width window word work write zone
+   memory pointer thread process kernel module register instruction pipeline latency
+   throughput overhead bottleneck allocation deallocation fragmentation thrashing`
+    .split(/\s+/)
+    .filter(Boolean)
+);
 
 function toDisplayName(word: string): string {
   return word
