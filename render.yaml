@@ -1,0 +1,60 @@
+# Render Blueprint — StudyMind API
+#
+# Deploy with:  render.com → New → Blueprint → point at this repo.
+# render.yaml at the repo ROOT is picked up automatically.
+#
+# Root Directory is the repo root, NOT server/ — this is an npm workspaces
+# monorepo and the lockfile must be installed from the top level.
+
+services:
+  - type: web
+    name: studymind-api
+    runtime: node
+    plan: free
+    region: singapore # change to whichever is nearest your users
+
+    # Root-level install (uses the committed package-lock.json), then compile
+    # only the server workspace. The web workspace is not needed here.
+    buildCommand: npm ci && npm run build -w @studymind/server
+
+    # dist/index.js binds 0.0.0.0:$PORT, and Render injects PORT automatically.
+    # Do not set PORT yourself.
+    startCommand: node server/dist/index.js
+
+    # This endpoint is public and registered before the JWT guard, so Render can
+    # poll it without a token. It reports db connectivity, so a dead Atlas
+    # connection surfaces as an unhealthy service rather than a silent one.
+    healthCheckPath: /api/health
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      - key: MONGODB_URI
+        sync: false # paste mongodb+srv://... from Atlas
+
+      - key: JWT_SECRET
+        generateValue: true # 64-char random value; must be >= 32 chars or the
+                            # server refuses to boot in production
+
+      - key: CLIENT_ORIGIN
+        sync: false # https://<your-app>.vercel.app — exact, no trailing slash
+
+      - key: UPLOAD_DIR
+        value: uploads
+
+      # Leave unset to run on the offline deterministic provider.
+      # If you set a key, you MUST also calibrate — see docs/DEPLOYMENT.md.
+      # - key: GEMINI_API_KEY
+      #   sync: false
+      # - key: AI_PROVIDER
+      #   value: local
+
+# Uploads are ephemeral without a disk. The free plan wipes them on redeploy.
+# For a persistent filesystem, mount a disk at /var/data and set
+# UPLOAD_DIR=/var/data/uploads.
+#
+# disks:
+#   - name: uploads
+#     mountPath: /var/data
+#     sizeGB: 1

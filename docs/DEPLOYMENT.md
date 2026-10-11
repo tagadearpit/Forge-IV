@@ -1,14 +1,14 @@
-# Deployment — Vercel · Replit · MongoDB Atlas
+# Deployment — Render · Vercel · MongoDB Atlas
 
 Three services, one order that actually works:
 
 ```
 1. MongoDB Atlas   ← everything needs the connection string
-2. Vercel          ← gives you the URL that Replit must allow in CORS
-3. Replit          ← needs Atlas URI + the Vercel URL as CLIENT_ORIGIN
+2. Vercel          ← gives you the URL that Render must allow in CORS
+3. Render          ← needs Atlas URI + the Vercel URL as CLIENT_ORIGIN
 ```
 
-Doing Replit before Vercel means you have to edit CORS afterwards. Atlas first
+Doing Render before Vercel means you have to edit CORS afterwards. Atlas first
 always.
 
 ---
@@ -17,20 +17,22 @@ always.
 
 ### Create the cluster
 
-1. [cloud.mongodb.com](https://cloud.mongodb.com) → **Create** → choose the
-   free **M0** tier.
+1. [cloud.mongodb.com](https://cloud.mongodb.com) → **Create** → free **M0** tier.
 2. Region: pick one near your users.
 3. **Database Access** → *Add New Database User*
-   - Username: `studymind`
+   - Username: e.g. `tagadearpit_db_user`
    - Password: **generate** — save it, you only see it once
    - Role: **Read and write to any database**
 4. **Network Access** → *Add IP Address* — see the warning below.
+5. **Connect** → *Drivers* → **Node.js** (there is no TypeScript option; the
+   Node.js driver ships its own types, and Mongoose wraps that same driver).
+   Deselect *View full code sample*.
 
 ### The IP allowlist — the #1 reason this fails
 
-Replit's egress IPs are **dynamic**. Your laptop's IP is also dynamic. The Atlas
-Network Access screen defaults to whitelisting nothing, and every connection
-then dies with a 10-second timeout and no useful error.
+Render and Vercel both run behind dynamic egress IPs. The Atlas Network Access
+screen defaults to whitelisting nothing, and every connection then dies with a
+10-second timeout and no useful error.
 
 | Situation | What to do |
 |---|---|
@@ -43,16 +45,15 @@ Ignore it for the demo, and put a line in your README saying you did.
 
 ### Copy the connection string
 
-**Database** → *Connect* → *Drivers* → Node.js:
-
 ```
-mongodb+srv://studymind:<PASSWORD>@studymind.XXXX.mongodb.net/?retryWrites=true&w=majority
+mongodb+srv://<user>:<password>@<cluster>.xxxx.mongodb.net/?retryWrites=true&w=majority
 ```
 
 **URL-encode the password.** If Atlas gave you `p@ssw0rd`, it must be
 `p%40ssw0rd`. A raw `@` silently breaks the string and the error is unhelpful.
 
-> **Never commit this string.** It goes in Replit Secrets, not in `.env` in git.
+> **Never commit this string.** It goes in Render environment variables, not in
+> `.env` in git.
 
 ---
 
@@ -65,22 +66,14 @@ mongodb+srv://studymind:<PASSWORD>@studymind.XXXX.mongodb.net/?retryWrites=true&
    Vercel tries to build the Express server as a Next app.
 3. Framework preset: **Next.js** (auto-detected)
 
-| Setting | Value |
-|---|---|
-| Root Directory | `web` |
-| Framework Preset | Next.js |
-| Build Command | `npm run build` |
-| Output Directory | `.next` |
-| Install Command | `npm install` |
-| Node Version | 20.x or newer |
-
-`web/vercel.json` already pins these, so the defaults should just work.
+`web/vercel.json` pins the build command, output directory and headers, so the
+defaults just work.
 
 ### Environment variables
 
 | Key | Value |
 |---|---|
-| `NEXT_PUBLIC_API_URL` | *(leave for now — set after Replit is live)* |
+| `NEXT_PUBLIC_API_URL` | `https://<your-render-service>.onrender.com` |
 
 > `NEXT_PUBLIC_*` values are **inlined at build time**. If you change the API
 > URL you must **redeploy**, not just restart. This is the most common
@@ -94,87 +87,98 @@ curl -s https://<your-app>.vercel.app | grep -o 'StudyMind' | head -1
 
 ---
 
-## 3. Replit (backend)
+## 3. Render (backend)
 
-The repo already contains `.replit`, so the Run button works with no manual
-steps.
+### Option A — Blueprint (recommended, zero config)
 
-### Import
+`render.yaml` is committed at the repo root:
 
-1. [replit.com] → **+ Create Repl** → *Import from GitHub* → `tagadearpit/Forge-IV`
-   branch **`feat/studymind-backend`**
-2. It runs `npm install && npm run build -w @studymind/server && npm run start -w @studymind/server`
+1. [dashboard.render.com] → **New → Blueprint**
+2. Select **tagadearpit/Forge-IV**
+3. Render reads `render.yaml` and prompts for the three `sync: false` values.
 
-`.replit` contents:
-
-```toml
-run = "npm install && npm run build -w @studymind/server && npm run start -w @studymind/server"
-entrypoint = "server/dist/index.js"
-modules = ["nodejs-20"]
-[[ports]]
-localPort = 3001
-externalPort = 80
-```
-
-The server binds `0.0.0.0:$PORT` (`server/src/index.ts`) — required by Replit.
-
-### Secrets (Replit → Tools → Secrets)
-
-| Key | Value |
+| Setting | Value |
 |---|---|
-| `MONGODB_URI` | the Atlas string from step 1 |
-| `JWT_SECRET` | `openssl rand -hex 32` |
-| `CLIENT_ORIGIN` | `https://<your-app>.vercel.app` |
-| `NODE_ENV` | `production` |
-| `UPLOAD_DIR` | `uploads` |
-| `GEMINI_API_KEY` | *(optional — omit to stay on the offline provider)* |
+| Root Directory | *(repo root — leave empty)* |
+| Build Command | `npm ci && npm run build -w @studymind/server` |
+| Start Command | `node server/dist/index.js` |
+| Health Check Path | `/api/health` |
+| Node version | from `engines` in package.json → `>=20` |
+
+**Do not set `PORT`.** Render injects it, and `server/src/index.ts` binds
+`0.0.0.0:$PORT`.
+
+### Option B — manual Web Service
+
+Same settings, entered by hand. Screenshot of each field is in the README.
+
+### Environment variables
+
+| Key | Value | Source |
+|---|---|---|
+| `NODE_ENV` | `production` | set in blueprint |
+| `MONGODB_URI` | `mongodb+srv://...` | **you paste this** |
+| `JWT_SECRET` | 64-char random | **generated by Render** |
+| `CLIENT_ORIGIN` | `https://<your-app>.vercel.app` | **you paste this** |
+| `UPLOAD_DIR` | `uploads` | set in blueprint |
+| `PORT` | *(unset)* | Render injects it |
 
 ### Verify
 
 ```bash
-curl -s https://<repl-name>.<user>.repl.co/api/health
+curl -s https://<your-service>.onrender.com/api/health
 # {"status":"ok","db":"connected","provider":"local",...}
 ```
 
 `"db":"connected"` is the one that matters. If it says `"error"`, it's the IP
 allowlist 99% of the time.
 
-### Deploy (publish) — optional
+> **Free plan spins down** after 15 minutes idle and takes ~50s to wake. The
+> first request after a cold start will feel slow. That's the plan, not a bug.
 
-For a stable URL that doesn't change per Repl, use **Deployments → Publish**.
-`.replit` already has a `[deployment]` section targeting Cloud Run. Set the same
-secrets in the published deployment — **Repl secrets do not automatically carry
-over** to a published deployment.
+### Persistent uploads
+
+Uploads are **ephemeral** on the free plan — a redeploy wipes them. For a disk:
+
+```yaml
+disks:
+  - name: uploads
+    mountPath: /var/data
+    sizeGB: 1
+```
+
+…then set `UPLOAD_DIR=/var/data/uploads`. Mount at `/var/data`, not at
+`/var/data/uploads`, or Render refuses the mount.
 
 ---
 
 ## 4. Wire them together
 
-After Replit is live, set `NEXT_PUBLIC_API_URL` in Vercel and **redeploy**:
+After Render is live, set `NEXT_PUBLIC_API_URL` in Vercel and **redeploy**:
 
 | Key | Value |
 |---|---|
-| `NEXT_PUBLIC_API_URL` | `https://<repl-name>.<user>.repl.co` |
+| `NEXT_PUBLIC_API_URL` | `https://<your-service>.onrender.com` |
 
-Then set `CLIENT_ORIGIN` in Replit to `https://<your-app>.vercel.app` and
-restart.
+Then set `CLIENT_ORIGIN` in Render to `https://<your-app>.vercel.app` and
+redeploy the service.
 
 > **Order matters.** `CLIENT_ORIGIN` must exactly match the Vercel origin —
-> scheme, host, no trailing slash, no `/`. A mismatch returns
-> `403 CORS_DENIED` and nothing else, which looks like a dead API.
+> scheme, host, no trailing slash, no `/`. A mismatch returns `403 CORS_DENIED`
+> and nothing else, which looks like a dead API.
 
 ### Check CORS both ways
 
 ```bash
 # allowed → 204
 curl -s -o /dev/null -w '%{http_code}\n' -X OPTIONS \
-  https://<repl>/api/auth/login \
+  https://<render>/api/auth/login \
   -H 'Origin: https://<your-app>.vercel.app' \
   -H 'Access-Control-Request-Method: POST'
 
 # disallowed → 403
 curl -s -o /dev/null -w '%{http_code}\n' -X OPTIONS \
-  https://<repl>/api/auth/login \
+  https://<render>/api/auth/login \
   -H 'Origin: https://evil.example.com' \
   -H 'Access-Control-Request-Method: POST'
 ```
@@ -186,7 +190,6 @@ curl -s -o /dev/null -w '%{http_code}\n' -X OPTIONS \
 The deployed database is empty, so sign up has nothing to show. Seed it:
 
 ```bash
-# from a clone with secrets loaded locally
 cd server
 MONGODB_URI="mongodb+srv://..." JWT_SECRET="..." npm run seed
 ```
@@ -202,19 +205,31 @@ not touch other users.
 
 ## Environment variable reference
 
-| Variable | Set on | Required | Notes |
+| Variable | Platform | Required | Notes |
 |---|---|---|---|
-| `MONGODB_URI` | Replit | ✅ | Atlas string, password URL-encoded |
-| `JWT_SECRET` | Replit | ✅ | ≥32 chars. Server **refuses to boot** otherwise |
-| `CLIENT_ORIGIN` | Replit | ✅ | Exact Vercel origin |
-| `NODE_ENV` | Replit | ✅ | `production` |
-| `UPLOAD_DIR` | Replit | | defaults `uploads` |
-| `NEXT_PUBLIC_API_URL` | Vercel | ✅ | Replit public URL. Build-time inlined |
-| `GEMINI_API_KEY` | Replit | | omit → offline deterministic provider |
-| `GEMINI_MODEL` | Replit | | default `gemini-2.0-flash` |
-| `GROUNDING_SIMILARITY_THRESHOLD_LOCAL` | Replit | | calibrated: `0.17` |
-| `GROUNDING_LEXICAL_THRESHOLD_LOCAL` | Replit | | calibrated: `0.55` |
-| `GROUNDING_SIMILARITY_THRESHOLD_GEMINI` | Replit | | **empty = fails closed.** See KNOWN_LIMITATIONS §2 |
+| `MONGODB_URI` | Render | ✅ | Atlas string, password URL-encoded |
+| `JWT_SECRET` | Render | ✅ | ≥32 chars. Server **refuses to boot** otherwise |
+| `CLIENT_ORIGIN` | Render | ✅ | Exact Vercel origin |
+| `NODE_ENV` | Render | ✅ | `production` |
+| `UPLOAD_DIR` | Render | | defaults `uploads`; ephemeral on free plan |
+| `PORT` | Render | ❌ | **injected by Render — do not set** |
+| `NEXT_PUBLIC_API_URL` | Vercel | ✅ | Render URL. Build-time inlined |
+| `GEMINI_API_KEY` | Render | | omit → offline deterministic provider |
+| `AI_PROVIDER` | Render | | `gemini` or `local`. Set `local` to pin offline |
+| `GEMINI_MODEL` | Render | | default `gemini-2.0-flash` |
+| `MAX_UPLOAD_MB` | Render | | default `100` |
+| `RETRIEVAL_TOP_K` | Render | | default `8` |
+
+### Grounding thresholds — leave unset
+
+The gate resolves per-provider via suffixed names:
+
+```
+GROUNDING_SIMILARITY_THRESHOLD_LOCAL     (default 0.17, calibrated)
+GROUNDING_LEXICAL_THRESHOLD_LOCAL        (default 0.55, calibrated)
+GROUNDING_SIMILARITY_THRESHOLD_GEMINI    (no default — fails closed)
+GROUNDING_LEXICAL_THRESHOLD_GEMINI       (no default — fails closed)
+```
 
 ### Switching to Gemini
 
@@ -225,8 +240,8 @@ AI_PROVIDER=gemini
 
 Then, **in this order** — the steps are not optional:
 
-1. `npx tsx scripts/calibrate_grounding.ts` → copy the printed thresholds into
-   Replit secrets. Until they exist, the Gemini gate refuses answers.
+1. `npx tsx scripts/calibrate_grounding.ts` → paste the printed thresholds into
+   Render env vars. Until they exist, the Gemini gate refuses every answer.
 2. `npx tsx scripts/reembed.ts` → re-embed every unit into the 768-dim space.
    Skipping this leaves the knowledge base silently unretrievable, because
    retrieval correctly refuses to compare 256-dim vectors with 768-dim ones.
@@ -238,31 +253,42 @@ Then, **in this order** — the steps are not optional:
 | Symptom | Cause | Fix |
 |---|---|---|
 | `/api/health` → `"db":"error"`, hangs 10s | Atlas IP allowlist | add `0.0.0.0/0` |
+| Build fails at `npm ci` | lockfile out of sync with package.json | commit both together |
 | `403 CORS_DENIED` in browser | `CLIENT_ORIGIN` mismatch | exact origin, no trailing slash |
 | Frontend calls `localhost:3001` | `NEXT_PUBLIC_*` is build-time | set the var, then **redeploy** |
 | Every answer is "not covered in your material" on Gemini | thresholds uncalibrated | run `calibrate_grounding.ts` |
 | Knowledge base empty after adding a Gemini key | units still 256-dim | run `reembed.ts` |
-| `401` on the PDF/video viewer | stale build | file tokens last 5 min; the client refreshes. Check `CLIENT_ORIGIN` if it never loads |
-| Server won't start on Replit | build failed | run the `run` command in the Shell tab and read the error |
-| Uploads vanish on restart | expected | files live on the container filesystem; use durable object storage in production |
+| `401` on the PDF/video viewer | stale build | file tokens last 5 min; the client refreshes |
+| Service won't start, log says JWT_SECRET | weak secret | `openssl rand -hex 32` |
+| Uploads vanish on redeploy | expected on free plan | mount a disk at `/var/data` |
+| First request after idle takes ~50s | free-plan cold start | expected |
 
 ---
 
 ## What has NOT been verified
 
-This deployment path has **never been executed**. Everything above is derived
-from the code and from the local production-mode boot, which *was* verified:
+This deployment path has **never been executed against the real platforms.**
+Everything above is derived from the code and from local production-mode runs
+using Render's exact commands, which *were* verified:
 
 ```
-$ npm run build -w @studymind/server && NODE_ENV=production node dist/index.js
-[db] connected (atlas)
-[studymind] listening on http://0.0.0.0:3002
-$ curl /api/health → {"status":"ok","db":"connected","provider":"local"}
-$ JWT_SECRET=change-me NODE_ENV=production node dist/index.js
-JWT_SECRET is not acceptable in production.
+$ npm ci && npm run build -w @studymind/server
+  → server/dist/index.js
+
+$ NODE_ENV=production PORT=8080 node server/dist/index.js
+[db] connected (atlas) mongodb://127.0.0.1:27017/studymind
+[studymind] listening on http://0.0.0.0:8080
+[studymind] client origin: https://studymind.vercel.app
+
+$ curl -i /api/health          (unauthenticated, as Render polls it)
+  HTTP/1.1 200 OK
+  {"status":"ok","db":"connected","provider":"local",...}
+
+$ NODE_ENV=production JWT_SECRET=change-me node dist/index.js
+  JWT_SECRET is not acceptable in production.
 ```
 
-What that does **not** prove: Atlas actually accepting connections from Replit's
-egress IP, Vercel serving the app, the two origins agreeing on CORS, or
-`NEXT_PUBLIC_API_URL` resolving at build time. First real deploy is where those
-get tested.
+What that does **not** prove: Atlas actually accepting connections from
+Render's egress IP, Vercel serving the app, the two origins agreeing on CORS,
+or `NEXT_PUBLIC_API_URL` resolving at build time. First real deploy is where
+those get tested.

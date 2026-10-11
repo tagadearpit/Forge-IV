@@ -22,7 +22,7 @@ import { getMasterySummary } from './services/learnerModel';
 export function createApp() {
   const app = express();
 
-  app.set('trust proxy', 1); // required for correct client IPs behind Replit/Vercel
+  app.set('trust proxy', 1); // required for correct client IPs behind Render's load balancer / Vercel
 
   // CORS: only the configured Vercel origin (plus localhost in dev).
   const allowed = new Set([env.CLIENT_ORIGIN]);

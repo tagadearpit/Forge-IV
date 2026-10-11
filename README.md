@@ -86,7 +86,7 @@ setup (data does not survive a restart). `/api/health` reports which mode is liv
 
 | Variable | Default | Notes |
 |---|---|---|
-| `PORT` | `3001` | Replit injects this |
+| `PORT` | *(unset)* | **Render injects this — do not set** |
 | `CLIENT_ORIGIN` | `http://localhost:3000` | **Only** this origin is allowed by CORS |
 | `MONGODB_URI` | *(empty)* | Empty ⇒ in-memory Mongo |
 | `JWT_SECRET` | dev default | **Required** in production — the server refuses to boot with the default |
@@ -115,7 +115,7 @@ No secret is ever committed. `.env.example` files are the templates.
 Full detail, with sequence diagrams, in **[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)**.
 
 ```
-Browser (Next.js 14 · Vercel)  ──HTTPS + JWT──►  Express API (Replit)
+Browser (Next.js 14 · Vercel)  ──HTTPS + JWT──►  Express API (Render)
                                                     ├── MongoDB Atlas
                                                     ├── Gemini API
                                                     └── Ingestion workers
@@ -392,23 +392,29 @@ Forge-IV/
 
 **[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)** has the full walkthrough.
 
-Deploy in this order — **Atlas → Vercel → Replit** — because Replit needs the
+Deploy in this order — **Atlas → Vercel → Render** — because Render needs the
 Vercel URL for `CLIENT_ORIGIN`:
 
 | Platform | Key settings |
 |---|---|
-| **MongoDB Atlas** | M0 cluster · user `studymind` (Read/Write) · Network Access `0.0.0.0/0` (Replit egress IPs are dynamic — see the warning) · copy the `mongodb+srv://` string |
+| **MongoDB Atlas** | M0 cluster · user (Read/Write) · Network Access `0.0.0.0/0` (Render/Vercel egress IPs are dynamic — see the warning) · Connect → Drivers → **Node.js** · copy the `mongodb+srv://` string |
 | **Vercel** | Root Directory **`web`** · Next.js · build `npm run build` · output `.next` · env `NEXT_PUBLIC_API_URL` |
-| **Replit** | Import branch `feat/studymind-backend` · `.replit` already runs install→build→start · port 3001→80 · secrets `MONGODB_URI`, `JWT_SECRET`, `CLIENT_ORIGIN`, `NODE_ENV=production` |
+| **Render** | **New → Blueprint** → `render.yaml` is committed, so only three values need pasting · build `npm ci && npm run build -w @studymind/server` · start `node server/dist/index.js` · health `/api/health` · don't set `PORT`, Render injects it |
 
-`.replit` and `web/vercel.json` are committed, so the Run/Deploy buttons work
-with no manual config.
+`render.yaml` and `web/vercel.json` are committed, so the Blueprint import
+needs no manual configuration. `trust proxy` is already set to `1` for
+Render's load balancer, and `/api/health` is public, so health checks work
+unauthenticated.
 
 Traps worth knowing before you start:
 - `NEXT_PUBLIC_*` is **inlined at build time** — change it and you must
   **redeploy**, not restart.
 - `CLIENT_ORIGIN` must match the Vercel origin exactly (scheme, host, no
   trailing slash) or every browser call returns `403 CORS_DENIED`.
+- **Render's free plan spins down after 15 min idle** and takes ~50s to wake.
+  The first request after idle will look like a hang. That's the plan.
+- **Uploads are ephemeral on the free plan** — a redeploy wipes them. Mount a
+  disk at `/var/data` and set `UPLOAD_DIR=/var/data/uploads` to keep them.
 - Atlas passwords must be **URL-encoded**; a raw `@` breaks the URI silently.
 
 Seed the deployed DB once, otherwise there's nothing to see:
