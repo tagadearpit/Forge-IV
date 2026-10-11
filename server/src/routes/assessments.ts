@@ -239,12 +239,35 @@ router.get(
       score: v.total ? Number((v.correct / v.total).toFixed(3)) : 0,
     }));
 
-    // Misconception tally — explicitly labelled, never inferred silently.
-    const miscon = new Map<string, number>();
-    for (const r of responses) {
+    // FIX 5: a misconception is only reported when it is LABELLED and tied to
+    // an option the student actually selected. Each entry keeps its evidence.
+    const miscon = new Map<string, { count: number; evidence: any[] }>();
+    for (const r of responses as any[]) {
       if (r.correct) continue;
       const q: any = questions.find((x: any) => String(x._id) === String(r.questionId));
-      if (q?.misconception) miscon.set(q.misconception, (miscon.get(q.misconception) ?? 0) + 1);
+      if (!q) continue;
+
+      let label: string | null = null;
+      let selectedOption: string | null = null;
+      if (q.type === 'mcq' && Array.isArray(q.options) && Array.isArray(q.distractorMisconceptions)) {
+        const idx = q.options.findIndex(
+          (o: string) => String(o).toLowerCase() === String(r.answer ?? '').toLowerCase()
+        );
+        if (idx >= 0) label = q.distractorMisconceptions[idx] ?? null;
+        if (idx >= 0) selectedOption = String(q.options[idx]);
+      }
+      if (!label && q.misconception) label = String(q.misconception);
+      if (!label) continue; // unlabelled -> no claim made
+
+      const cur = miscon.get(label) ?? { count: 0, evidence: [] };
+      cur.count++;
+      cur.evidence.push({
+        questionId: String(q._id),
+        questionText: q.text,
+        selectedOption,
+        correctOption: String(q.answerKey),
+      });
+      miscon.set(label, cur);
     }
 
     const masteryAfter = await getMasteryOverview(req.userId!);
@@ -259,8 +282,14 @@ router.get(
       topicBreakdown: topicBreakdown.sort((a, b) => a.score - b.score),
       weakTopics: topicBreakdown.filter((t) => t.score < 0.5).map((t) => t.topicName),
       misconceptions: [...miscon.entries()]
-        .map(([label, count]) => ({ label, count }))
+        .map(([label, v]) => ({ label, count: v.count, evidence: v.evidence }))
         .sort((a, b) => b.count - a.count),
+      // Explicitly surfaced so the UI can say "none available" rather than
+      // implying the student has no misconceptions.
+      misconceptionCoverage: {
+        wrongAnswers: (responses as any[]).filter((r) => !r.correct).length,
+        labelled: [...miscon.values()].reduce((n, v) => n + v.count, 0),
+      },
       timePerQuestion: responses.map((r: any) => ({
         questionId: String(r.questionId),
         timeSpentSec: r.timeSpentSec ?? 0,

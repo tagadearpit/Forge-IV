@@ -60,6 +60,8 @@ export interface GeneratedQuestion {
   units?: string | null;
   explanation: string;
   misconception?: string | null;
+  /** index-aligned with options; null at the correct option's index. */
+  distractorMisconceptions?: Array<string | null> | null;
   difficulty: number;
   topicId?: string | null;
   sourceUnitIds: string[];
@@ -68,25 +70,19 @@ export interface GeneratedQuestion {
   fingerprint: string;
 }
 
-const DEFAULT_MISCONCEPTIONS = [
-  'confuses correlation with causation',
-  'applies the formula but loses the unit conversion',
-  'misreads the condition the theorem requires',
-  'confuses the base case with the general case',
-  'omits a boundary condition',
-];
-
 /* ------------------------------ generation ---------------------------- */
 
 export async function generateQuestions(
   req: GenerateRequest,
-  opts: { relaxed?: boolean } = {}
+  opts: { relaxed?: boolean; unitTopicMap?: Map<string, string> } = {}
 ): Promise<{
   questions: GeneratedQuestion[];
   rejected: string[];
   relaxed: boolean;
 }> {
   const similarityReject = opts.relaxed ? SIMILARITY_RELAXED : SIMILARITY_REJECT;
+  // Per-call, scoped to this user. Never module-level.
+  const unitTopicMap = opts.unitTopicMap ?? (await buildUnitTopicMap(req.userId));
   const types = req.types?.length ? req.types : (['mcq', 'short', 'numerical'] as const);
   const count = Math.min(Math.max(req.count ?? 10, 1), 50);
   const ai = getAIProvider();
@@ -151,12 +147,24 @@ export async function generateQuestions(
         options: Array.isArray(cand.options) ? cand.options.map(String).slice(0, 6) : undefined,
         answerKey:
           type === 'numerical' ? Number(cand.answerKey) : String(cand.answerKey ?? '').trim(),
-        tolerance: type === 'numerical' ? numericTolerance(cand.units) : null,
+        tolerance:
+          type === 'numerical'
+            ? cand.tolerance !== undefined
+              ? clampSuppliedTolerance(Number(cand.answerKey), cand.tolerance)
+              : numericTolerance(Number(cand.answerKey))
+            : null,
         units: cand.units ? String(cand.units) : null,
         explanation: String(cand.explanation ?? '').trim(),
-        misconception: cand.misconception ? String(cand.misconception) : pickMisconception(),
+        // FIX 5: a misconception is EVIDENCE, not decoration. If nothing labels
+        // this wrong answer, we store null and the report says so. The previous
+        // code returned a RANDOM label from a fixed list, so a report could
+        // confidently assert a diagnosis that was simply invented.
+        misconception: cand.misconception ? String(cand.misconception) : null,
+        distractorMisconceptions: Array.isArray(cand.distractorMisconceptions)
+          ? (cand.distractorMisconceptions as Array<string | null>)
+          : null,
         difficulty: clampDifficulty(cand.difficulty ?? diffTarget),
-        topicId: topicIdForUnits(sourceUnitIds) ?? topicIds[0] ?? null,
+        topicId: topicIdForUnits(sourceUnitIds, unitTopicMap) ?? topicIds[0] ?? null,
         sourceUnitIds,
         verified: false,
         verificationMethod: 'pending',
@@ -207,13 +215,105 @@ function clampDifficulty(d: number): number {
   return Math.min(1, Math.max(0, d));
 }
 
-function pickMisconception(): string {
-  return DEFAULT_MISCONCEPTIONS[Math.floor(Math.random() * DEFAULT_MISCONCEPTIONS.length)];
+/**
+ * Absolute tolerance for a numerical answer: 1% of the magnitude, with an
+ * absolute floor so tiny answers are still gradable.
+ *
+ * The previous implementation was `max(0.01, |Number(units)| * 0)` — `units` is
+ * a display string like "m/s", so Number(units) was NaN -> 1 -> `1 * 0` = 0, and
+ * the function ALWAYS returned 0.01 regardless of the answer's size. An answer
+ * of 12000 was graded with ±0.01, i.e. exact float equality.
+ */
+function numericTolerance(answer: number): number {
+  if (!Number.isFinite(answer)) return 0.01;
+  return Math.max(0.01, Math.abs(answer) * RELATIVE_TOLERANCE);
 }
 
-/** Tolerance scales with magnitude so large answers are not unfairly strict. */
-function numericTolerance(units: unknown): number {
-  return Math.max(0.01, Math.abs(Number(units) || 1) * 0);
+/** 1% relative tolerance, matching the stated grading rule. */
+const RELATIVE_TOLERANCE = 0.01;
+/** Accepted model-supplied tolerances are clamped to this band. */
+const MIN_REL = 0.001;
+const MAX_REL = 0.05;
+
+/**
+ * Recomputes a numeric answer from the arithmetic embedded in the question
+ * when one is present, so a wrong model key is caught instead of trusted.
+ *
+ * Uses a SHUNTING-YARD evaluator over an explicit token grammar. Never `eval`,
+ * never `Function` — this parses untrusted model output.
+ *
+ * Returns null when the question has no evaluable expression, which is normal.
+ */
+export function evaluateNumericExpression(text: string): number | null {
+  // Pull out a simple arithmetic expression, e.g. "12 * 4" or "(3 + 4) / 2".
+  // Allow leading/embedded parentheses; shuntingYard already handles precedence.
+  const m = text.match(
+    /(\d+(?:\.\d+)?\s*[+\-*/^]\s*\(?\d+(?:\.\d+)?\)?(?:\s*\(?\s*[+\-*/^]\s*\d+(?:\.\d+)?\)?)*)/
+  );
+  if (!m) return null;
+  const expr = m[1].replace(/\s+/g, '');
+  if (!/[+\-*/^]/.test(expr)) return null;
+  try {
+    return shuntingYard(expr);
+  } catch {
+    return null;
+  }
+}
+
+function shuntingYard(expr: string): number {
+  const tokens = expr.match(/\d+(?:\.\d+)?|[+\-*/^()]/g);
+  if (!tokens) throw new Error('no tokens');
+  if (tokens.join('') !== expr) throw new Error('unexpected characters');
+
+  const prec: Record<string, number> = { '+': 1, '-': 1, '*': 2, '/': 2, '^': 3 };
+  const out: (string | number)[] = [];
+  const ops: string[] = [];
+
+  const apply = () => {
+    const op = ops.pop();
+    if (op === undefined) throw new Error('missing operator');
+    const b = out.pop() as number;
+    const a = out.pop() as number;
+    if (a === undefined || b === undefined) throw new Error('missing operand');
+    out.push(applyOp(op, a, b));
+  };
+
+  for (const t of tokens) {
+    if (/^\d/.test(t)) {
+      out.push(Number(t));
+    } else if (t === '(') {
+      ops.push(t);
+    } else if (t === ')') {
+      while (ops.length && ops[ops.length - 1] !== '(') apply();
+      ops.pop();
+    } else {
+      while (ops.length && prec[ops[ops.length - 1]] >= prec[t] && ops[ops.length - 1] !== '(') apply();
+      ops.push(t);
+    }
+  }
+  while (ops.length) apply();
+  if (out.length !== 1) throw new Error('malformed expression');
+  return out[0] as number;
+}
+
+function applyOp(op: string, a: number, b: number): number {
+  switch (op) {
+    case '+': return a + b;
+    case '-': return a - b;
+    case '*': return a * b;
+    case '/': return b === 0 ? NaN : a / b;
+    case '^': return Math.pow(a, b);
+    default: throw new Error(`unknown operator ${op}`);
+  }
+}
+
+/** Applies a model-supplied tolerance, clamped to [0.1%, 5%] of |answer|. */
+function clampSuppliedTolerance(answer: number, supplied: unknown): number {
+  const n = Number(supplied);
+  if (!Number.isFinite(n) || n < 0) return numericTolerance(answer);
+  const lo = Math.abs(answer) * MIN_REL;
+  const hi = Math.abs(answer) * MAX_REL;
+  return Math.min(Math.max(n, lo), hi);
 }
 
 function isWellFormed(q: GeneratedQuestion): boolean {
@@ -229,23 +329,28 @@ function isWellFormed(q: GeneratedQuestion): boolean {
   return true;
 }
 
-function topicIdForUnits(unitIds: string[]): string | null {
-  if (!unitIds.length) return null;
-  const u = unitIds[0];
-  // Populated by the caller's preload; kept sync with fetchUnitTopicMap below.
-  return unitTopicMap.get(u) ?? null;
+/**
+ * FIX 6: this was a module-level Map cleared and refilled on every request, so
+ * two concurrent users could overwrite each other and receive the OTHER user's
+ * topic tags on their questions. It is now a per-call value threaded through
+ * explicitly.
+ */
+async function buildUnitTopicMap(userId: string): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const units = await Unit.find({ userId }).select('topicIds').lean();
+  for (const u of units as any[]) {
+    const ids = (u.topicIds ?? []) as unknown[];
+    if (ids.length) map.set(String(u._id), String(ids[0]));
+  }
+  return map;
 }
 
-/** Populated by generateQuestions before use; avoids an N+1 lookup per question. */
-const unitTopicMap = new Map<string, string>();
-
-export async function primeUnitTopicMap(userId: string): Promise<void> {
-  unitTopicMap.clear();
-  const units = await Unit.find({ userId }).select('topicIds').lean();
-  for (const u of units) {
-    const ids = ((u as any).topicIds ?? []) as unknown[];
-    if (ids.length) unitTopicMap.set(String(u._id), String(ids[0]));
-  }
+function topicIdForUnits(
+  unitIds: string[],
+  map: Map<string, string>
+): string | null {
+  if (!unitIds.length) return null;
+  return map.get(unitIds[0]) ?? null;
 }
 
 /* -------------------------------- dedupe ------------------------------- */
@@ -353,25 +458,61 @@ export async function verifyQuestion(
   if (!haystack.trim()) return { ok: false, method: 'local-structural', reason: 'no cited text' };
 
   if (q.type === 'numerical') {
-    // Recompute rather than trusting the model's arithmetic: any numeric literal
-    // in the question must be consistent with the key, and the key must appear
-    // in (or be derivable from) the source.
-    const numbersInQ = [...q.text.matchAll(/-?\d+(?:\.\d+)?/g)].map((m) => Number(m[0]));
     const key = Number(q.answerKey);
     if (!Number.isFinite(key)) {
       return { ok: false, method: 'local-computed', reason: 'answer key is not a number' };
     }
-    const tol = q.tolerance ?? relativeTolerance(key);
+    const tol = q.tolerance ?? numericTolerance(key);
+
+    // Recompute any arithmetic the question itself states, and reject the
+    // question if the model's key disagrees beyond tolerance. This is the whole
+    // point: model arithmetic is not trusted, it is re-derived in code.
+    const computed = evaluateNumericExpression(q.text);
+    if (computed !== null && Number.isFinite(computed)) {
+      if (Math.abs(computed - key) > tol) {
+        return {
+          ok: false,
+          method: 'local-computed-numeric',
+          reason: `recomputed ${computed} != key ${key} (tol ${tol})`,
+        };
+      }
+      return { ok: true, method: 'local-computed-numeric' };
+    }
+
     const presentInSource = containsNumber(haystack, key, tol);
-    // A question must not simply restate its own answer, and the answer should
-    // be traceable to the source text.
-    if (!presentInSource && !numbersInQ.length) {
+    if (!presentInSource) {
       return { ok: false, method: 'local-computed', reason: 'answer not traceable to source' };
     }
-    if (numbersInQ.length && numbersInQ.some((n) => Math.abs(n - key) > tol && n !== 0)) {
-      return { ok: false, method: 'local-computed', reason: 'question states a conflicting number' };
-    }
     return { ok: true, method: 'local-computed-numeric' };
+  }
+
+  // MCQ: verify each distractor's misconception label is specific and does not
+  // contradict the source. A generic or correct-option label is rejected.
+  if (q.type === 'mcq' && q.distractorMisconceptions?.length && q.options) {
+    const correctIdx = q.options.findIndex(
+      (o) => String(o).toLowerCase() === String(q.answerKey).toLowerCase()
+    );
+    for (let i = 0; i < q.options.length; i++) {
+      const label = q.distractorMisconceptions[i];
+      if (i === correctIdx) {
+        if (label) {
+          return {
+            ok: false,
+            method: 'local-distractor-audit',
+            reason: 'correct option must not carry a misconception label',
+          };
+        }
+        continue;
+      }
+      if (!label || String(label).trim().length < 8) continue; // unlabelled is allowed
+      if (haystack.includes(String(label).toLowerCase())) {
+        return {
+          ok: false,
+          method: 'local-distractor-audit',
+          reason: 'misconception label restates the source instead of describing the error',
+        };
+      }
+    }
   }
 
   // Short answer / MCQ: key terms must appear in the cited text.
@@ -402,7 +543,7 @@ function containsNumber(haystack: string, target: number, tol: number): boolean 
 /* ------------------------------ persistence ---------------------------- */
 
 export async function createAssessment(req: GenerateRequest) {
-  await primeUnitTopicMap(req.userId);
+  const unitTopicMap = await buildUnitTopicMap(req.userId);
 
   const assessment = await Assessment.create({
     userId: req.userId,
@@ -416,11 +557,11 @@ export async function createAssessment(req: GenerateRequest) {
   // First pass is strict. If the dedupe guard has exhausted the pool (a small
   // corpus, or a student who has already been assessed many times), retry once
   // with a relaxed paraphrase threshold rather than failing the request outright.
-  let pass = await generateQuestions(req);
+  let pass = await generateQuestions(req, { unitTopicMap });
   let relaxed = false;
 
   if (pass.questions.length < (req.count ?? 10) && req.count && req.count > 1) {
-    const retry = await generateQuestions(req, { relaxed: true });
+    const retry = await generateQuestions(req, { relaxed: true, unitTopicMap });
     const seen = new Set(pass.questions.map((q) => q.fingerprint));
     const extra = retry.questions.filter((q) => !seen.has(q.fingerprint));
     if (extra.length) {
@@ -492,12 +633,23 @@ export async function createAssessment(req: GenerateRequest) {
 
 /* ------------------------------- grading ------------------------------- */
 
+export interface MisconceptionEvidence {
+  label: string;
+  questionId: string;
+  questionText: string;
+  /** The option the student actually picked (MCQ), or null for other types. */
+  selectedOption: string | null;
+  correctOption: string | null;
+}
+
 export interface GradedAnswer {
   questionId: string;
   correct: boolean;
   correctAnswer: unknown;
   explanation: string;
   misconception: string | null;
+  /** Populated only when the misconception is tied to an actual wrong choice. */
+  misconceptionEvidence: MisconceptionEvidence | null;
   citations: Array<{ label: string; excerpt: string; unitId: string }>;
   timeSpentSec: number;
 }
@@ -514,7 +666,9 @@ export function gradeAnswer(question: any, answer: unknown): { correct: boolean;
     const a = Number(answer);
     const k = Number(key);
     if (!Number.isFinite(a)) return { correct: false, score: 0 };
-    const tol = question.tolerance ?? relativeTolerance(k);
+    // Stored tolerance is ABSOLUTE; fall back to the magnitude-aware rule if a
+    // legacy question predates the field.
+    const tol = question.tolerance ?? numericTolerance(k);
     const ok = Math.abs(a - k) <= tol;
     return { correct: ok, score: ok ? 1 : 0 };
   }
@@ -571,6 +725,38 @@ export async function submitAnswer(
     });
   }
 
+  // FIX 5: the reported misconception must come from the option the student
+  // ACTUALLY selected, not a random or generic label.
+  let misconception: string | null = null;
+  let misconceptionEvidence: MisconceptionEvidence | null = null;
+  if (!correct && question.type === 'mcq' && Array.isArray(question.options)) {
+    const chosenIdx = (question.options as string[]).findIndex(
+      (o) => String(o).toLowerCase() === String(answer ?? '').toLowerCase()
+    );
+    const label =
+      chosenIdx >= 0 ? (question.distractorMisconceptions ?? [])[chosenIdx] ?? null : null;
+    if (label && chosenIdx >= 0) {
+      misconception = String(label);
+      misconceptionEvidence = {
+        label: misconception,
+        questionId,
+        questionText: String(question.text),
+        selectedOption: String(question.options[chosenIdx]),
+        correctOption: String(question.answerKey),
+      };
+    }
+  } else if (!correct && question.misconception) {
+    // Non-MCQ types may carry a single label attached by generation/verification.
+    misconception = String(question.misconception);
+    misconceptionEvidence = {
+      label: misconception,
+      questionId,
+      questionText: String(question.text),
+      selectedOption: null,
+      correctOption: String(question.answerKey),
+    };
+  }
+
   const units = await Unit.find({ _id: { $in: question.sourceUnitIds } }).lean();
   const sourceIds = [...new Set(units.map((u: any) => String(u.sourceId)))];
   const { Source } = await import('../models/Source');
@@ -592,7 +778,8 @@ export async function submitAnswer(
     correct,
     correctAnswer: question.answerKey,
     explanation: question.explanation ?? '',
-    misconception: correct ? null : question.misconception ?? null,
+    misconception,
+    misconceptionEvidence,
     citations,
     timeSpentSec,
   };

@@ -13,6 +13,12 @@ const QuestionSchema = new Schema(
     units: { type: String, default: null }, // numerical unit label, e.g. "m/s"
     explanation: { type: String, default: null },
     misconception: { type: String, default: null },
+    /**
+     * FIX 5: index-aligned with `options`. Entry for the CORRECT option must be
+     * null. Used to attribute a misconception to the distractor a student
+     * actually chose, rather than asserting a generic label.
+     */
+    distractorMisconceptions: { type: [String], default: null },
     topicId: { type: Schema.Types.ObjectId, ref: 'Topic', default: null, index: true },
     sourceUnitIds: [{ type: Schema.Types.ObjectId, ref: 'Unit' }],
     difficulty: { type: Number, default: 0.5, min: 0, max: 1 },

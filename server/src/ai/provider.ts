@@ -49,8 +49,12 @@ export interface DraftQuestion {
   options?: string[];
   answerKey: string | number;
   units?: string | null;
+  /** Model-suggested tolerance for numerical items; clamped downstream. */
+  tolerance?: number | null;
   explanation: string;
   misconception?: string | null;
+  /** Per-distractor misconception labels for MCQs (index-aligned with options). */
+  distractorMisconceptions?: Array<string | null> | null;
   difficulty: number;
   /** Indices into the excerpt array this question was built from. */
   citedIndices: number[];
@@ -301,11 +305,12 @@ Reply with STRICT JSON only:
     const listed = opts.excerpts.map((e, i) => `[${i + 1}] ${e.text}`).join('\n\n');
     const typeRules: Record<DraftQuestion['type'], string> = {
       mcq:
-        'For type="mcq": exactly 4 options, answerKey is the correct option TEXT (not the letter). Distractors must be plausible but wrong, drawn from the same material.',
+        'For type="mcq": exactly 4 options, answerKey is the correct option TEXT (not the letter). Distractors must be plausible but wrong, drawn from the same material. ' +
+        'Set "distractorMisconceptions" to an array of 4 strings/nulls aligned with "options": null for the correct option, and for each distractor the SPECIFIC error a student makes by choosing it (e.g. "confuses the base case with the general case"). Never invent a misconception for the correct option.',
       short:
         'For type="short": answerKey is a concise expected answer phrase (3-8 words) that a correct student would produce.',
       numerical:
-        'For type="numerical": answerKey is the computed NUMBER, "units" is the unit label (e.g. "m/s"). Compute the value carefully.',
+        'For type="numerical": answerKey is the computed NUMBER, "units" is the unit label (e.g. "m/s"). Compute the value carefully. Optionally set "tolerance" as a relative fraction (e.g. 0.01); it will be clamped. If the question states arithmetic explicitly, double-check the result.',
     };
 
     const parsed = await this.generateJSON<{ questions?: any[] }>({
@@ -335,8 +340,12 @@ Rules:
       options: Array.isArray(q.options) ? q.options.map(String) : undefined,
       answerKey: opts.type === 'numerical' ? Number(q.answerKey) : String(q.answerKey ?? '').trim(),
       units: q.units ? String(q.units) : null,
+      tolerance: q.tolerance !== undefined && q.tolerance !== null ? Number(q.tolerance) : null,
       explanation: String(q.explanation ?? '').trim(),
       misconception: q.misconception ? String(q.misconception) : null,
+      distractorMisconceptions: Array.isArray(q.distractorMisconceptions)
+        ? q.distractorMisconceptions.map((m: any) => (m ? String(m) : null))
+        : null,
       difficulty: Number.isFinite(Number(q.difficulty)) ? Number(q.difficulty) : opts.targetDifficulty,
       citedIndices: Array.isArray(q.citedIndices) ? q.citedIndices.map(Number).filter(Number.isFinite) : [],
     }));
