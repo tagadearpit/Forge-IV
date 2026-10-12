@@ -132,7 +132,7 @@ export default function LandingPage() {
                 Multimodal AI Hackathon 2026 · Track D
               </span>
 
-              <h1 className="mt-5 max-w-[12ch] text-[2.65rem] leading-[1.04] font-bold tracking-[-0.055em] sm:text-[3.5rem] lg:text-[4.1rem] lg:leading-[1.02]">
+              <h1 className="mt-5 max-w-[15ch] text-[2.65rem] leading-[1.04] font-bold tracking-[-0.055em] sm:text-[3.5rem] lg:text-[4.1rem] lg:leading-[1.02]">
                 Study smarter with an AI tutor that
                 <span className="bg-gradient-to-r from-brand-600 to-brand-400 bg-clip-text text-transparent">
                   {' '}cites its sources
