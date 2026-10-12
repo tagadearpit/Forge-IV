@@ -124,9 +124,7 @@ export async function runLocalEval(userId: string, limit = 40) {
   let offMaterialCorrect = 0;
   const failures: string[] = [];
 
-  // A plain slice(0, limit) would take only the leading in-material entries and
-  // silently drop every off-material query (they sort last), leaving
-  // refusal_accuracy undefined. Sample proportionally instead.
+  // Sample both supported and outside-material questions proportionally.
   const inAll = entries.filter((e) => !e.isOffMaterial);
   const offAll = entries.filter((e) => e.isOffMaterial);
   const offQuota = Math.min(offAll.length, Math.max(1, Math.round(limit * 0.25)));
@@ -146,7 +144,8 @@ export async function runLocalEval(userId: string, limit = 40) {
 
     if (entry.isOffMaterial) {
       offMaterial++;
-      // "Correct" = declined or flagged rather than confidently answering.
+      // This measures source-boundary classification, not refusal: a separate
+      // general-knowledge answer remains correctly labelled outside_material.
       if (result.groundingStatus === 'outside_material') offMaterialCorrect++;
       continue;
     }
@@ -179,10 +178,12 @@ export async function runLocalEval(userId: string, limit = 40) {
     context_precision: Number((agg.context_precision / div).toFixed(4)),
     context_recall: Number((agg.context_recall / div).toFixed(4)),
     citation_accuracy: Number((agg.citation_accuracy / div).toFixed(4)),
-    refusal_accuracy: Number((offMaterial ? offMaterialCorrect / offMaterial : 0).toFixed(4)),
+    outside_material_detection_accuracy: Number((offMaterial ? offMaterialCorrect / offMaterial : 0).toFixed(4)),
+    refusal_accuracy: Number((offMaterial ? offMaterialCorrect / offMaterial : 0).toFixed(4)), // legacy alias
     evaluated: n,
     off_material_tested: offMaterial,
-    off_material_declined: offMaterialCorrect,
+    off_material_detected: offMaterialCorrect,
+    off_material_declined: offMaterialCorrect, // legacy alias
     retrieval_failures: failures.length,
     sampling: `first ${inQuota} in-material + first ${offQuota} off-material`,
   };

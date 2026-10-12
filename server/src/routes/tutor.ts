@@ -6,6 +6,7 @@ import { requireAuth, AuthedRequest } from '../middleware/auth.js';
 import { answerQuestion, retrieveUnits } from '../services/rag.js';
 import { env } from '../config/env.js';
 import { logEvent } from '../services/events.js';
+import { User } from '../models/User.js';
 
 const router = Router();
 
@@ -44,7 +45,14 @@ router.post(
   asyncHandler(async (req: AuthedRequest, res) => {
     const { question, scope, language, includeContexts } =
       req.body as z.infer<typeof askSchema>;
-    const result = await answerQuestion(req.userId!, question, { scope, language });
+    const user = await User.findById(req.userId).select('prefs').lean();
+    const prefs = user?.prefs as any;
+    const result = await answerQuestion(req.userId!, question, {
+      scope,
+      language: language ?? (prefs?.language === 'hi' ? 'hi' : 'en'),
+      answerStyle: prefs?.answerStyle === 'deep' ? 'deep' : 'quick',
+      studyLevel: prefs?.studyLevel ?? 'self-learner',
+    });
 
     if (includeContexts) {
       const hits = await retrieveUnits(req.userId!, {

@@ -47,10 +47,9 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-        mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
-        // A slightly warmer display face for hero copy.
-        display: ['"Fraunces"', 'Georgia', 'ui-serif', 'serif'],
+        sans: ['var(--font-body)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        mono: ['var(--font-mono)', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+        display: ['var(--font-display)', 'Georgia', 'ui-serif', 'serif'],
       },
       borderRadius: {
         '2xl': '1rem',

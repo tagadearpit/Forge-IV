@@ -43,6 +43,10 @@ const patchMeSchema = z.object({
   prefs: z
     .object({
       language: z.enum(['en', 'hi']).optional(),
+      primaryUses: z.array(z.enum(['exam_prep', 'lectures', 'quick_revision', 'homework_help', 'curious'])).max(5).optional(),
+      studyLevel: z.enum(['school', 'undergrad', 'postgrad', 'self-learner']).optional(),
+      answerStyle: z.enum(['quick', 'deep']).optional(),
+      dailyStudyMinutes: z.number().int().min(5).max(720).optional(),
       examDate: z.string().optional().nullable(),
       targetScore: z.number().min(0).max(100).optional().nullable(),
     })
@@ -156,6 +160,10 @@ router.patch(
     if (prefs) {
       const target = (user.prefs ??= { language: 'en', onboarded: false } as never);
       if (prefs.language) target.language = prefs.language as 'en' | 'hi';
+      if (prefs.primaryUses) target.primaryUses = prefs.primaryUses as never;
+      if (prefs.studyLevel) target.studyLevel = prefs.studyLevel as never;
+      if (prefs.answerStyle) target.answerStyle = prefs.answerStyle as never;
+      if (prefs.dailyStudyMinutes !== undefined) target.dailyStudyMinutes = prefs.dailyStudyMinutes as number;
       if (prefs.targetScore !== undefined) {
         target.targetScore = prefs.targetScore as number | null;
       }

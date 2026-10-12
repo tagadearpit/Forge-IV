@@ -147,8 +147,7 @@ export function SiteFooter() {
           <div className="md:col-span-2">
             <Logo />
             <p className="mt-3 max-w-sm text-sm text-muted">
-              A source-grounded AI study companion. Every answer cites the page, slide or timestamp
-              it came from — and questions your material does not cover get declined, not guessed.
+              A study buddy for your own materials: cited answers when your sources know it, clearly separated general knowledge when they do not.
             </p>
           </div>
           <div>
@@ -175,9 +174,8 @@ export function SiteFooter() {
 
         <div className="mt-10 border-t border-[color:rgb(var(--border))] pt-6 text-xs text-muted">
           <p>
-            Built for <strong className="font-semibold">Multimodal AI Hackathon 2026 — Track D</strong>{' '}
-            (Personalized Tutoring &amp; Adaptive Learning). Team:{' '}
-            <span className="font-mono">[Your Team Name]</span>.
+            Built for the <strong className="font-semibold">Multimodal AI Hackathon 2026 — Track D</strong>{' '}
+            (Personalized Tutoring &amp; Adaptive Learning).
           </p>
           <p className="mt-2">
             Demo course material was authored for this prototype and is offered under CC BY 4.0.

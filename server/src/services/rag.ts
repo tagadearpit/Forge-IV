@@ -18,8 +18,8 @@ import { env } from '../config/env.js';
  * Two guards make hallucination structurally hard rather than merely unlikely:
  *
  *  1. SIMILARITY GATE — if the best retrieved excerpt is below
- *     GROUNDING_SIMILARITY_THRESHOLD we return `outside_material` and decline.
- *     The model is never even called, so it cannot invent anything.
+ *     GROUNDING_SIMILARITY_THRESHOLD we request a separate general-knowledge
+ *     answer; it is never blended with cited material.
  *
  *  2. CITATION AUDIT — after generation, every cited unit ID is checked against
  *     the set actually retrieved. Citations that reference a unit we did not
@@ -246,9 +246,9 @@ export function isGrounded(topSimilarity: number, overlap: number): boolean {
 export async function answerQuestion(
   userId: string,
   question: string,
-  opts: { scope?: { sourceIds?: string[]; topicIds?: string[] }; language?: 'en' | 'hi' } = {}
+  opts: { scope?: { sourceIds?: string[]; topicIds?: string[] }; language?: 'en' | 'hi'; answerStyle?: 'quick' | 'deep'; studyLevel?: string } = {}
 ): Promise<TutorAnswer> {
-  const language = opts.language === 'hi' ? 'hi' : 'en';
+  const language: 'en' | 'hi' = opts.language === 'hi' ? 'hi' : 'en';
   const topK = env.RETRIEVAL_TOP_K;
 
   const hits = await retrieveUnits(userId, {
@@ -260,33 +260,50 @@ export async function answerQuestion(
 
   const audit = { citedRequested: 0, citedVerified: 0, stripped: 0, declined: false };
 
-  // No material at all, or nothing close enough → decline BEFORE calling the
-  // model, so it cannot invent anything.
-  // Uses the UNWEIGHTED coverage signal. An IDF-weighted variant was built and
-  // measured (idfWeightedOverlap, retained below); on test set v2 it improved
-  // near-miss refusal 0.50 -> 0.58 but worsened over-refusal 0.222 -> 0.259,
-  // because the 0.55 threshold is calibrated for the unweighted distribution.
-  // Adopting it would have been an un-calibrated threshold swap, so the gate
-  // stays on the signal it was calibrated against. See README "Evaluation".
+  // Uses the calibrated, unweighted coverage signal. The citation audit below
+  // remains unchanged and applies only to answers grounded in retrieved units.
   const overlap = lexicalOverlap(question, hits);
+  const ai = getAIProvider();
   if (!hits.length || !isGrounded(hits[0].similarity, overlap)) {
-    audit.declined = true;
-    return {
-      answer:
-        language === 'hi'
-          ? 'यह प्रश्न आपकी अपलोड की गई सामग्री में शामिल नहीं है। इसलिए मैं इसका उत्तर नहीं दे रहा हूँ।'
-          : "This isn't covered in your uploaded material, so I won't answer it from guesswork. Upload a source that covers it, or rephrase the question.",
-      citations: [],
-      groundingStatus: 'outside_material',
-      outsideKnowledge: null,
+    const common = {
+      citations: [] as Citation[],
+      groundingStatus: 'outside_material' as GroundingStatus,
       language,
       topSimilarity: hits[0]?.similarity ?? 0,
       lexicalOverlap: overlap,
       audit,
     };
+    if (ai.name === 'local') {
+      return {
+        ...common,
+        answer: language === 'hi'
+          ? 'यह प्रश्न अपलोड की गई सामग्री में नहीं है। सामान्य ज्ञान के उत्तर के लिए ऑनलाइन AI प्रदाता चाहिए; ऑफ़लाइन मोड केवल आपकी सामग्री से जवाब देता है।'
+          : "That isn't in your uploaded material. General-knowledge answers need the online AI provider; offline mode can only answer from your sources.",
+        outsideKnowledge: null,
+      };
+    }
+    try {
+      const outsideKnowledge = await ai.generalAnswer({
+        question,
+        language,
+        answerStyle: opts.answerStyle,
+        studyLevel: opts.studyLevel,
+      });
+      if (outsideKnowledge?.trim()) {
+        return { ...common, answer: '', outsideKnowledge: outsideKnowledge.trim() };
+      }
+    } catch (err) {
+      console.warn('[tutor] generalAnswer failed', (err as Error).message);
+    }
+    return {
+      ...common,
+      answer: language === 'hi'
+        ? 'सामान्य उत्तर अभी उपलब्ध नहीं है। कृपया थोड़ी देर बाद फिर कोशिश करें या अपनी सामग्री से जुड़ा प्रश्न पूछें।'
+        : 'I could not fetch a general answer just now. Try again in a moment, or ask about your uploaded material.',
+      outsideKnowledge: null,
+    };
   }
 
-  const ai = getAIProvider();
 
   interface TutorJson {
     answer?: string;
@@ -301,6 +318,8 @@ export async function answerQuestion(
       question,
       excerpts: hits.map((h) => ({ unitId: h.unitId, text: h.text })),
       language,
+      answerStyle: opts.answerStyle,
+      studyLevel: opts.studyLevel,
     });
     parsed = {
       answer: draft.answer,

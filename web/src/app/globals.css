@@ -64,6 +64,7 @@
   }
 
   body {
+    font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
     background-color: rgb(var(--bg));
     color: rgb(var(--fg));
     font-feature-settings: 'cv11', 'ss01';
@@ -83,6 +84,14 @@
       rgba(11, 22, 16, 0) 60%
     );
   }
+
+  h1, h2, h3 {
+    font-family: var(--font-display), Georgia, ui-serif, serif;
+    letter-spacing: -0.025em;
+  }
+
+  h1 { font-weight: 700; letter-spacing: -0.04em; }
+  h2 { font-weight: 650; }
 
   /* Visible focus ring on every interactive element (WCAG 2.4.7). */
   :focus-visible {

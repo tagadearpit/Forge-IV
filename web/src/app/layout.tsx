@@ -1,12 +1,18 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter, JetBrains_Mono } from 'next/font/google';
+import { Bricolage_Grotesque, DM_Sans, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/lib/auth';
 import { ToastProvider } from '@/components/ui';
 
-const inter = Inter({
+const display = Bricolage_Grotesque({
   subsets: ['latin'],
-  variable: '--font-inter',
+  variable: '--font-display',
+  display: 'swap',
+});
+
+const body = DM_Sans({
+  subsets: ['latin'],
+  variable: '--font-body',
   display: 'swap',
 });
 
@@ -24,7 +30,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'StudyMind — source-grounded AI tutoring',
     description:
-      'Every answer cites the exact page, slide or timestamp it came from. Questions your material does not cover get declined, not guessed.',
+      'Answers grounded in your material cite the page, slide or timestamp. General-knowledge answers are clearly labelled and kept separate.',
     type: 'website',
   },
 };
@@ -42,7 +48,7 @@ export const viewport: Viewport = {
 const THEME_INIT = `
 (function(){try{
   var t = localStorage.getItem('studymind.theme');
-  if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+  if (t === 'dark') {
     document.documentElement.classList.add('dark');
   }
 }catch(e){}})();
@@ -50,7 +56,7 @@ const THEME_INIT = `
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${inter.variable} ${mono.variable}`}>
+    <html lang="en" suppressHydrationWarning className={`${display.variable} ${body.variable} ${mono.variable}`}>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
       </head>

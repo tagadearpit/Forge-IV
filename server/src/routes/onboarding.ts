@@ -12,6 +12,10 @@ const intakeSchema = z.object({
   examDate: z.string().optional().nullable(),
   targetScore: z.number().min(0).max(100).optional().nullable(),
   language: z.enum(['en', 'hi']).optional(),
+  primaryUses: z.array(z.enum(['exam_prep', 'lectures', 'quick_revision', 'homework_help', 'curious'])).max(5).optional(),
+  studyLevel: z.enum(['school', 'undergrad', 'postgrad', 'self-learner']).optional(),
+  answerStyle: z.enum(['quick', 'deep']).optional(),
+  dailyStudyMinutes: z.number().int().min(5).max(720).optional(),
   /** Self-rated familiarity per topic, 1 (new) .. 5 (very familiar). */
   familiarity: z.record(z.string(), z.number().min(1).max(5)).optional(),
 });
@@ -26,7 +30,7 @@ router.post(
   requireAuth,
   validateBody(intakeSchema),
   asyncHandler(async (req: AuthedRequest, res) => {
-    const { examDate, targetScore, language, familiarity } = req.body as z.infer<typeof intakeSchema>;
+    const { examDate, targetScore, language, familiarity, primaryUses, studyLevel, answerStyle, dailyStudyMinutes } = req.body as z.infer<typeof intakeSchema>;
     const user = await User.findById(req.userId);
     if (!user) throw new ApiError(404, 'USER_NOT_FOUND', 'User does not exist.');
 
@@ -34,6 +38,10 @@ router.post(
     if (examDate !== undefined) prefs.examDate = examDate ? new Date(examDate) : null;
     if (targetScore !== undefined) prefs.targetScore = targetScore;
     if (language) prefs.language = language;
+    if (primaryUses) prefs.primaryUses = primaryUses;
+    if (studyLevel) prefs.studyLevel = studyLevel;
+    if (answerStyle) prefs.answerStyle = answerStyle;
+    if (dailyStudyMinutes !== undefined) prefs.dailyStudyMinutes = dailyStudyMinutes;
     prefs.onboarded = true;
     if (familiarity) prefs.selfRatedFamiliarity = new Map(Object.entries(familiarity).map(([k, v]) => [k, v]) as never);
     await user.save();

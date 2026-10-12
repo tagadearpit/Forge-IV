@@ -9,6 +9,7 @@ import { useToast, Button } from '@/components/ui';
 import { Markdown } from '@/components/markdown';
 import { cn } from '@/lib/utils';
 import { SourceViewer } from '@/components/source-viewer';
+import { useAuth } from '@/lib/auth';
 
 interface Message {
   id: string;
@@ -45,9 +46,11 @@ function getSpeechRecognition(): (new () => SpeechRecognitionLike) | null {
 }
 
 export default function TutorPage() {
+  const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [question, setQuestion] = useState('');
   const [language, setLanguage] = useState<'en' | 'hi'>('en');
+  useEffect(() => { if (user?.prefs?.language === 'hi') setLanguage('hi'); }, [user]);
   const [scope, setScope] = useState<{ label: string; sourceIds?: string[]; topicIds?: string[] }>({ label: 'All sources' });
   const [sources, setSources] = useState<any[]>([]);
   const [asking, setAsking] = useState(false);
@@ -251,9 +254,9 @@ export default function TutorPage() {
             </div>
             <h2 className="mt-4 text-lg font-semibold">Ask anything from your material</h2>
             <p className="mt-1.5 max-w-md text-sm text-muted">
-              Answers cite the exact page, slide or timestamp. Questions your sources do not cover
-              get declined rather than guessed.
+              Ask anything. Answers from your uploads come with citations; general-knowledge answers get their own clearly labelled block. Upload material for more cited answers.
             </p>
+            {sources.length === 0 && <p className="mt-2 max-w-md text-xs text-muted">No uploads yet? You can still chat. Add material whenever you want cited answers.</p>}
             <div className="mt-6 flex max-w-lg flex-wrap justify-center gap-2">
               {SUGGESTIONS.map((s) => (
                 <button
@@ -434,7 +437,7 @@ function AnswerBlock({
       ? 'Fully grounded'
       : result.groundingStatus === 'partial'
         ? 'Partially grounded'
-        : 'Outside material';
+        : result.outsideKnowledge ? 'General knowledge' : 'Offline source-only mode';
 
   return (
     <div className="space-y-3">
@@ -449,7 +452,7 @@ function AnswerBlock({
           </span>
         )}
         <button
-          onClick={() => onSpeak(result.answer)}
+          onClick={() => onSpeak(result.outsideKnowledge || result.answer)}
           aria-label="Read answer aloud"
           className="chip border border-[color:rgb(var(--border))] hover:bg-[color:rgb(var(--surface))]"
         >
@@ -459,12 +462,12 @@ function AnswerBlock({
 
       {/* Grounded / outside split */}
       {outside ? (
-        <div className="rounded-xl border border-slate-300 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
-          <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/40">
+          <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
             <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
-            Not covered by your material
+            {result.outsideKnowledge ? 'General knowledge — not from your uploaded material' : 'General answers need online mode'}
           </p>
-          <Markdown className="text-sm">{result.answer}</Markdown>
+          <Markdown className="text-sm text-amber-950 dark:text-amber-100">{result.outsideKnowledge || result.answer}</Markdown>
         </div>
       ) : (
         <div className="rounded-xl border-l-4 border-brand-600 bg-brand-50/50 p-4 dark:bg-brand-950/30">
@@ -491,15 +494,6 @@ function AnswerBlock({
         </div>
       )}
 
-      {result.outsideKnowledge && (
-        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/40">
-          <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
-            <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
-            General knowledge (not in your sources)
-          </p>
-          <p className="text-sm text-amber-900 dark:text-amber-100">{result.outsideKnowledge}</p>
-        </div>
-      )}
 
       <p className="font-mono text-[11px] text-muted">
         retrieval top-1 {result.topSimilarity?.toFixed?.(3)} · question coverage{' '}

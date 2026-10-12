@@ -8,7 +8,7 @@ import {
   EMBEDDING_DIM,
 } from '../utils/embedding.js';
 import { Unit } from '../models/Unit.js';
-import { retrieveUnits } from '../services/rag.js';
+import { retrieveUnits, isGrounded } from '../services/rag.js';
 import { __setActiveSpace, activeSpace, groundingThresholds } from '../utils/vectorSpace.js';
 import mongoose from 'mongoose';
 import { getAIProvider } from '../ai/provider.js';
@@ -228,6 +228,7 @@ describe('grounding thresholds are provider-specific', () => {
         Number.POSITIVE_INFINITY,
         'with no Gemini calibration the gate must not admit on similarity alone'
       );
+      assert.equal(isGrounded(0, 0), false, 'zero similarity and zero overlap must never pass an uncalibrated Gemini gate');
       __setActiveSpace(null);
     } finally {
       process.env = saved;

@@ -89,7 +89,11 @@ export interface AIProvider {
     question: string;
     excerpts: Array<{ unitId: string; text: string }>;
     language: 'en' | 'hi';
+    answerStyle?: 'quick' | 'deep';
+    studyLevel?: string;
   }): Promise<GroundedAnswerDraft>;
+  /** Answer without source material, for a separately labelled outside-source block. */
+  generalAnswer(opts: { question: string; language: 'en' | 'hi'; answerStyle?: 'quick' | 'deep'; studyLevel?: string }): Promise<string | null>;
   /** Grounded question drafting for one question type. */
   draftQuestions(opts: {
     type: 'mcq' | 'short' | 'numerical';
@@ -267,6 +271,8 @@ class GeminiProvider implements AIProvider {
     question: string;
     excerpts: Array<{ unitId: string; text: string }>;
     language: 'en' | 'hi';
+    answerStyle?: 'quick' | 'deep';
+    studyLevel?: string;
   }): Promise<GroundedAnswerDraft> {
     const listed = opts.excerpts.map((e, i) => `[${i + 1}] ${e.text}`).join('\n\n');
     const system =
@@ -278,6 +284,8 @@ class GeminiProvider implements AIProvider {
 ${listed}
 
 QUESTION: ${opts.question}
+
+Adapt the explanation to a ${opts.studyLevel ?? 'self-learner'} learner. ${opts.answerStyle === 'deep' ? 'Give a careful step-by-step explanation with an example when the excerpts support one.' : 'Keep the answer concise and easy to scan.'}
 
 Reply with STRICT JSON only:
 {
@@ -294,6 +302,23 @@ Reply with STRICT JSON only:
       groundingStatus: parsed.groundingStatus ?? 'partial',
       outsideKnowledge: parsed.outsideKnowledge ?? null,
     };
+  }
+
+  async generalAnswer(opts: { question: string; language: 'en' | 'hi'; answerStyle?: 'quick' | 'deep'; studyLevel?: string }): Promise<string | null> {
+    const languageInstruction = opts.language === 'hi'
+      ? 'Answer in Hindi, keeping important technical terms in English in parentheses.'
+      : 'Answer in English.';
+    const depthInstruction = opts.answerStyle === 'deep'
+      ? 'Give a patient, step-by-step explanation at the learner’s level, with an example if helpful.'
+      : 'Give a concise, friendly answer in a few short paragraphs.';
+    return this.generateText({
+      system: `You are a careful study buddy answering from general knowledge, not from uploaded course material. ${languageInstruction} ${depthInstruction} Do not claim this answer is supported by the learner’s sources. If uncertain or the question needs current information, say so clearly.`,
+      prompt: `Learner level: ${opts.studyLevel ?? 'self-learner'}.
+Question: ${opts.question}
+Answer clearly and accurately.`,
+      temperature: 0.3,
+      maxOutputTokens: opts.answerStyle === 'deep' ? 1200 : 500,
+    });
   }
 
   async draftQuestions(opts: {
@@ -499,6 +524,10 @@ class LocalProvider implements AIProvider {
    * Nothing here is invented: every question's answer is recoverable from the
    * cited excerpt, which is exactly what the verifier checks afterwards.
    */
+  async generalAnswer(): Promise<string | null> {
+    return null;
+  }
+
   async draftQuestions(opts: {
     type: 'mcq' | 'short' | 'numerical';
     excerpts: Array<{ unitId: string; text: string }>;

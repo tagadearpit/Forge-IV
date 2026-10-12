@@ -159,7 +159,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   // session is never bounced mid-hydration.
   useEffect(() => {
     if (ready && !user) router.replace('/login');
-  }, [ready, user, router]);
+    else if (ready && user && user.prefs?.onboarded === false && pathname !== '/onboarding') router.replace('/onboarding');
+  }, [ready, user, router, pathname]);
 
   if (!ready) {
     return (
@@ -254,7 +255,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
             <div className="ml-auto flex items-center gap-3">
               <span className="hidden text-sm text-muted sm:inline">
-                Hi, {user.name.split(' ')[0]}
+                {`Hey, ${user.name.split(' ')[0]} — ready to make something click?`}
               </span>
               <ProfileMenu />
             </div>

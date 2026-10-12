@@ -69,7 +69,7 @@ export function groundingThresholds(): {
       // No Gemini calibration has been run. The local value is NOT a valid
       // substitute: the two spaces have different score distributions. Fail
       // closed (refuse) rather than answer with an uncalibrated gate.
-      return { similarity: Number.POSITIVE_INFINITY, lexical: 0, fromLegacyFallback: false };
+      return { similarity: Number.POSITIVE_INFINITY, lexical: Number.POSITIVE_INFINITY, fromLegacyFallback: false };
     }
     return { similarity: sim, lexical: lex ?? 0, fromLegacyFallback: false };
   }

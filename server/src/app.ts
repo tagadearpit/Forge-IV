@@ -121,6 +121,7 @@ async function handleDashboard(req: express.Request & { userId?: string }, res: 
 
   res.json({
     greetingName: user?.name?.split(' ')[0] ?? 'there',
+    prefs: user?.prefs ?? {},
     examDate: user?.prefs?.examDate ?? null,
     daysToExam: user?.prefs?.examDate
       ? Math.ceil((new Date(user.prefs.examDate).getTime() - Date.now()) / 86_400_000)

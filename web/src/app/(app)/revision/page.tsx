@@ -85,12 +85,7 @@ export default function RevisionPage() {
               </button>
             </div>
 
-            <p className="mt-3 text-xs text-muted">Rate yourself — the weakest cards come back sooner.</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {['Again', 'Hard', 'Good', 'Easy'].map((r) => (
-                <button key={r} className="chip border border-[color:rgb(var(--border))] hover:bg-[color:rgb(var(--surface))]">{r}</button>
-              ))}
-            </div>
+            <p className="mt-3 text-xs text-muted">Flip through these source-based prompts at your own pace.</p>
           </>
         ) : (
           <p className="mt-4 text-sm text-muted">No flashcards could be built for this topic.</p>

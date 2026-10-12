@@ -33,7 +33,7 @@ export default function DashboardPage() {
 
   const greeting = (() => {
     const h = new Date().getHours();
-    return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+    return h < 12 ? 'Morning — ready to make something click?' : h < 17 ? 'Afternoon — let’s turn one thing into an aha.' : 'Evening — one small study win?';
   })();
 
   if (state === 'error') return <ErrorState message={errorMsg} onRetry={load} />;
@@ -56,6 +56,15 @@ export default function DashboardPage() {
   const mastery: any[] = data.masteryByTopic ?? [];
   const nextUp: any[] = data.nextUp ?? [];
   const activity: any[] = data.recentActivity ?? [];
+  const primaryUses: string[] = data.prefs?.primaryUses ?? [];
+  const quizAction = primaryUses.includes('exam_prep') ? 'Exam practice' : primaryUses.includes('quick_revision') ? 'Quick revision' : 'Start a quiz';
+  const tutorAction = primaryUses.includes('homework_help') ? 'Work through homework' : primaryUses.includes('lectures') ? 'Untangle a lecture' : 'Ask the tutor';
+  const dailyStudyMinutes = Number(data.prefs?.dailyStudyMinutes ?? 30);
+  const suggestedStep = nextUp[0]?.topicName
+    ? `Start with ${nextUp[0].topicName}`
+    : primaryUses.includes('exam_prep')
+      ? 'Try a short exam-practice set'
+      : 'Ask one question to get started';
 
   const bandColor = (b: string) =>
     b === 'weak' ? 'bg-red-500' : b === 'developing' ? 'bg-amber-500' : 'bg-green-500';
@@ -66,13 +75,14 @@ export default function DashboardPage() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-            {greeting}, {data.greetingName}
+            {greeting}
           </h1>
           <p className="mt-1 text-sm text-muted">
             {k.topicsTracked > 0
               ? `Tracking ${k.topicsTracked} topics across ${data.sources?.total ?? 0} sources.`
               : 'Upload your first lecture to get started.'}
           </p>
+          <p className="mt-1 text-xs text-muted">Your {dailyStudyMinutes}-minute daily goal · Suggested first step: {suggestedStep}.</p>
         </div>
 
         {data.daysToExam !== null && data.daysToExam !== undefined && (
@@ -112,8 +122,8 @@ export default function DashboardPage() {
             <MessagesSquare className="h-5 w-5" aria-hidden />
           </span>
           <span>
-            <span className="block text-sm font-semibold">Ask the tutor</span>
-            <span className="block text-xs text-muted">Cited answers only</span>
+            <span className="block text-sm font-semibold">{tutorAction}</span>
+            <span className="block text-xs text-muted">Your style: {data.prefs?.answerStyle === 'deep' ? 'deep dives' : 'quick bites'}</span>
           </span>
         </Link>
         <Link href="/assessments" className="card flex items-center gap-3 p-4 transition-shadow hover:shadow-lift">
@@ -121,8 +131,8 @@ export default function DashboardPage() {
             <ClipboardList className="h-5 w-5" aria-hidden />
           </span>
           <span>
-            <span className="block text-sm font-semibold">Start a quiz</span>
-            <span className="block text-xs text-muted">Adaptive, never repeated</span>
+            <span className="block text-sm font-semibold">{quizAction}</span>
+            <span className="block text-xs text-muted">A good next step, tuned to you</span>
           </span>
         </Link>
       </div>

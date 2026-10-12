@@ -23,12 +23,12 @@ const FEATURES = [
   {
     icon: Link2,
     title: 'Source Grounding',
-    body: 'Answers cite the page, slide or timestamp they came from. Questions your material does not cover are declined, not guessed.',
+    body: 'Answers grounded in your material cite the page, slide or timestamp. If the material does not cover it, a clearly labelled general-knowledge answer stays separate.',
   },
   {
     icon: ClipboardCheck,
     title: 'Adaptive Assessment',
-    body: 'MCQ, short answer and numerical questions on the scope you choose — each verified, tagged to a topic, and never repeated.',
+    body: 'MCQ, short answer and numerical questions on the scope you choose, verified against your material and tagged to a topic.',
   },
   {
     icon: Brain,
@@ -48,7 +48,7 @@ const FEATURES = [
   {
     icon: RefreshCw,
     title: 'Revision Material',
-    body: 'Flashcards and summaries targeted at your weakest topics, with spaced-repetition ratings that feed back into the model.',
+    body: 'Flashcards and summaries point you back to the topics that could use another look.'
   },
   {
     icon: CalendarDays,
@@ -98,7 +98,7 @@ const FAQ = [
   },
   {
     q: 'How does StudyMind avoid making things up?',
-    a: 'Two guards. First, if the retrieved material is not close enough to your question, the model is never even called and the tutor says the question is not covered. Second, after an answer is generated, every citation is checked against the units that were actually retrieved — a citation pointing at something we did not retrieve is stripped before you see it.',
+    a: 'The tutor checks your material first. When it supports the answer, citations are checked against the retrieved passages and shown with the response. When it does not, an optional general-knowledge answer appears in its own warning-labelled block, with no citations, so it cannot be confused with your uploads.',
   },
   {
     q: 'Does it support Hindi?',
@@ -106,7 +106,7 @@ const FAQ = [
   },
   {
     q: 'Who can see my uploaded material?',
-    a: 'Your uploads belong to your account. Every query is filtered by your user ID, so one student can never retrieve another student\'s material. Passwords are hashed with bcrypt at cost 12, sessions are 7-day JWTs, and uploads are never used to train anything.',
+    a: 'Queries are scoped to your account, and passwords are hashed before storage. Check the service privacy policy for current data-handling details.'
   },
   {
     q: 'How is my mastery score calculated?',
@@ -114,7 +114,7 @@ const FAQ = [
   },
   {
     q: 'What does it cost to run?',
-    a: 'The app runs entirely on free tiers for a small deployment: Vercel and Replit hobby plus a MongoDB Atlas free cluster. LLM calls are the only metered cost, and they are made only where a model is genuinely needed — extraction, question verification and answering.',
+    a: 'Hosting and AI-provider charges depend on the services and plans used to run the app. AI calls may incur separate usage-based costs; check your provider’s current pricing before scaling up.',
   },
 ];
 
@@ -132,7 +132,7 @@ export default function LandingPage() {
                 Multimodal AI Hackathon 2026 · Track D
               </span>
 
-              <h1 className="mt-5 text-4xl font-extrabold tracking-tight sm:text-5xl lg:text-[3.4rem] lg:leading-[1.08]">
+              <h1 className="mt-5 max-w-[12ch] text-[2.65rem] leading-[1.04] font-bold tracking-[-0.055em] sm:text-[3.5rem] lg:text-[4.1rem] lg:leading-[1.02]">
                 Study smarter with an AI tutor that
                 <span className="bg-gradient-to-r from-brand-600 to-brand-400 bg-clip-text text-transparent">
                   {' '}cites its sources
@@ -140,32 +140,19 @@ export default function LandingPage() {
               </h1>
 
               <p className="mt-5 max-w-xl text-lg text-muted">
-                Upload your lectures, textbooks and slides. Get answers grounded in that material with
-                the exact page, slide or timestamp attached — and quizzes that adapt to what you
-                actually know.
+                Upload your lectures, textbooks and slides. Get cited answers when your material has the answer — or a clearly separate general-knowledge response when it doesn’t. Then practice with quizzes that adapt to what you know.
               </p>
 
               <div className="mt-8 flex flex-wrap gap-3">
                 <Link href="/login" className="btn-primary px-6 py-3 text-base">
                   Get Started <ArrowRight className="h-4 w-4" aria-hidden />
                 </Link>
-                <a href="#demo" className="btn-secondary px-6 py-3 text-base">
-                  <Play className="h-4 w-4" aria-hidden /> Watch Demo
+                <a href="#how-it-works" className="btn-secondary px-6 py-3 text-base">
+                  <Play className="h-4 w-4" aria-hidden /> See how it works
                 </a>
               </div>
 
-              <dl className="mt-10 grid max-w-lg grid-cols-3 gap-6 border-t border-[color:rgb(var(--border))] pt-6">
-                {[
-                  ['100%', 'of answers cited'],
-                  ['0', 'unsupported claims'],
-                  ['4', 'modalities ingested'],
-                ].map(([v, l]) => (
-                  <div key={l}>
-                    <dt className="text-2xl font-bold text-brand-600">{v}</dt>
-                    <dd className="mt-0.5 text-xs text-muted">{l}</dd>
-                  </div>
-                ))}
-              </dl>
+              <HeroEvaluationStats />
             </div>
 
             <div className="animate-fade-up [animation-delay:120ms]">
@@ -275,7 +262,7 @@ export default function LandingPage() {
               {[
                 ['Browser → API', 'JSON over HTTPS with a bearer JWT on every protected route. CORS is locked to the deployed frontend origin.'],
                 ['Ingestion workers', 'Parse, chunk, embed and topic-tag each source. Unit-level failures are recorded without failing the whole source.'],
-                ['Provider seam', 'One interface, two implementations: Gemini, or a fully offline deterministic provider that never invents content.'],
+                ['Provider seam', 'One interface supports Gemini-backed answers and an offline fallback for source-based study.'],
               ].map(([t, b]) => (
                 <div key={t} className="card p-5">
                   <h3 className="text-sm font-semibold">{t}</h3>
@@ -294,15 +281,15 @@ export default function LandingPage() {
                 <SectionHeading
                   eyebrow="Grounding & trust"
                   title="Trust is a mechanism, not a promise"
-                  body="Two concrete guards make unsupported answers structurally hard to produce."
+                  body="Cited answers stay grounded, and general answers stay clearly separate."
                   align="left"
                 />
 
                 <div className="mt-8 space-y-5">
                   <Guard
                     icon={ShieldCheck}
-                    title="The model is never asked when there is nothing to ground on"
-                    body="Before generation, retrieval is scored on two signals. If neither clears its threshold the tutor declines outright — the language model is not called at all, so it has no opportunity to invent an answer."
+                    title="Cited answers stay grounded; general answers stay separate"
+                    body="The tutor checks your uploads first. When they do not cover a question, any general-knowledge response is shown separately with a clear warning and no citations."
                   />
                   <Guard
                     icon={CheckCircle2}
@@ -333,21 +320,16 @@ export default function LandingPage() {
                         only a frame whose bit was already clear is actually evicted.
                       </p>
                       <div className="mt-3 flex flex-wrap gap-2">
-                        <button className="chip bg-brand-600 font-mono text-white hover:bg-brand-700">
-                          Lecture 7 · p.42
-                        </button>
-                        <button className="chip bg-[color:rgb(var(--surface))] font-mono text-muted hover:bg-brand-50 dark:hover:bg-brand-950">
-                          Slides · 12:44
-                        </button>
+                        <span className="chip bg-brand-600 font-mono text-white">Lecture 7 · p.42</span>
+                        <span className="chip bg-[color:rgb(var(--surface))] font-mono text-muted">Slides · 12:44</span>
                       </div>
                     </div>
 
                     <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-amber-300 bg-amber-50 p-3.5 text-sm dark:border-amber-800 dark:bg-amber-950/40">
                       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden />
                       <p className="text-amber-900 dark:text-amber-100">
-                        <strong className="font-semibold">Outside your material:</strong>{' '}
-                        &ldquo;What is the weather in Delhi today?&rdquo; — declined, because your
-                        uploaded sources do not cover it.
+                        <strong className="font-semibold">General knowledge — not from your uploaded material:</strong>{' '}
+                        Questions your uploads do not cover can still get a separate general answer.
                       </p>
                     </div>
                   </div>
@@ -452,31 +434,6 @@ export default function LandingPage() {
                 </Reveal>
               ))}
             </div>
-          </div>
-        </section>
-
-        {/* --------------------------- DEMO SLOT --------------------------- */}
-        <section id="demo" className="border-t border-[color:rgb(var(--border))] py-16 sm:py-20">
-          <div className="mx-auto max-w-4xl px-4 sm:px-6">
-            <Reveal>
-              <div className="card p-8 text-center sm:p-12">
-                <Play className="mx-auto h-10 w-10 text-brand-600" aria-hidden />
-                <h2 className="mt-4 text-2xl font-bold">Demo video</h2>
-                <p className="mx-auto mt-2 max-w-lg text-sm text-muted">
-                  A 5-minute walkthrough: upload workflow, grounded chat, adaptive assessment, and the
-                  architecture behind it.
-                </p>
-                <div className="mt-6 aspect-video w-full overflow-hidden rounded-2xl border border-dashed border-[color:rgb(var(--border))] bg-[color:rgb(var(--surface))]">
-                  <div className="flex h-full flex-col items-center justify-center gap-2 text-muted">
-                    <Play className="h-8 w-8 opacity-40" aria-hidden />
-                    <p className="text-sm font-medium">Demo video placeholder</p>
-                    <p className="text-xs">
-                      Replace with your hosted recording — see <code className="font-mono">docs/DEMO_SCRIPT.md</code>
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </Reveal>
           </div>
         </section>
 
@@ -615,9 +572,24 @@ function Legend({ color, label }: { color: string; label: string }) {
 }
 
 /**
- * Live evaluation table. Reads the latest stored run; shows an explicit prompt
- * to run evaluation rather than fabricating placeholder numbers.
+ * Live evaluation summary. Reads the latest stored run; never fabricates placeholder numbers.
  */
+function HeroEvaluationStats() {
+  const [metrics, setMetrics] = useState<Record<string, number> | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    api.evalResults().then((r) => { if (!cancelled && r?.metrics) setMetrics(r.metrics); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+  if (!metrics) return <p className="mt-10 border-t border-[color:rgb(var(--border))] pt-6 text-sm text-muted">Evaluation not run yet.</p>;
+  const stats = [
+    [String(metrics.evaluated ?? 0), 'in-material questions checked'],
+    [typeof metrics.citation_accuracy === 'number' ? `${(metrics.citation_accuracy * 100).toFixed(1)}%` : 'Not measured', 'citation accuracy'],
+    [String(metrics.off_material_tested ?? 0), 'outside-material checks'],
+  ];
+  return <dl className="mt-10 grid max-w-lg grid-cols-3 gap-4 border-t border-[color:rgb(var(--border))] pt-6 sm:gap-6">{stats.map(([v, label]) => <div key={label}><dt className="text-xl font-bold text-brand-600 sm:text-2xl">{v}</dt><dd className="mt-0.5 text-xs text-muted">{label}</dd></div>)}</dl>;
+}
+
 function EvalTable() {
   const [metrics, setMetrics] = useState<Record<string, number> | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'empty'>('loading');
@@ -645,7 +617,7 @@ function EvalTable() {
     ['Context precision', 'context_precision', 'Retrieved units that are actually relevant'],
     ['Context recall', 'context_recall', 'Ground-truth units that were retrieved'],
     ['Citation accuracy', 'citation_accuracy', 'Citations pointing at the correct unit'],
-    ['Refusal accuracy', 'refusal_accuracy', 'Off-material questions correctly declined'],
+    ['Outside-material detection', 'refusal_accuracy', 'Questions correctly identified as outside your uploaded sources'],
   ];
 
   return (
@@ -658,7 +630,7 @@ function EvalTable() {
               ? 'Latest run — measured against the project test set'
               : state === 'loading'
                 ? 'Loading…'
-                : 'No evaluation run recorded yet'}
+                : 'Evaluation not run yet'}
           </p>
         </div>
         {state === 'ready' && metrics && (
@@ -697,7 +669,7 @@ function EvalTable() {
                         {(value * 100).toFixed(1)}%
                       </span>
                     ) : (
-                      <span className="text-xs text-muted">Run evaluation to populate.</span>
+                      <span className="text-xs text-muted">Evaluation not run yet</span>
                     )}
                   </td>
                 </tr>
