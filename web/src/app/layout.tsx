@@ -23,12 +23,12 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'StudyMind — Your AI study companion, grounded in your own material',
+  title: 'StudyMind — your study buddy for cited answers and curious questions',
   description:
     'Upload lectures, textbooks and slides. Get source-cited answers, adaptive quizzes, and a mastery model that knows what you have actually learned.',
   keywords: ['AI tutor', 'RAG', 'adaptive learning', 'study companion', 'spaced repetition'],
   openGraph: {
-    title: 'StudyMind — source-grounded AI tutoring',
+    title: 'StudyMind — a study buddy for cited and general answers',
     description:
       'Answers grounded in your material cite the page, slide or timestamp. General-knowledge answers are clearly labelled and kept separate.',
     type: 'website',

@@ -28,7 +28,7 @@ export default function RevisionPage() {
   }, [topicId]);
 
   if (loading && !rev) return <div className="space-y-3">{[0,1,2].map(i => <Skeleton key={i} className="h-20" />)}</div>;
-  if (!rev) return <EmptyState icon={<BookOpen className="h-10 w-10" aria-hidden />} title="No revision material yet" description="Upload material first." />;
+  if (!rev) return <EmptyState icon={<BookOpen className="h-10 w-10" aria-hidden />} title="No revision cards yet" description="Add a source and I’ll turn its key ideas into study prompts." />;
 
   const card = rev.flashcards?.[idx];
 

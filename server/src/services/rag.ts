@@ -236,8 +236,8 @@ export function idfWeightedOverlap(question: string, hits: RetrievedUnit[]): num
 /** Grounding decision: either signal is sufficient to attempt an answer. */
 export function isGrounded(topSimilarity: number, overlap: number): boolean {
   const t = groundingThresholds();
-  // With an uncalibrated Gemini space the similarity threshold is +Infinity, so
-  // only the lexical signal can pass. Failing closed is the safe direction.
+  // With an uncalibrated Gemini space both thresholds are +Infinity, so neither
+  // signal passes accidentally. Failing closed is the safe direction.
   return topSimilarity >= t.similarity || overlap >= t.lexical;
 }
 

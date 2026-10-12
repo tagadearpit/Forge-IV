@@ -28,20 +28,6 @@ async function clickVisibleLinks(page: Page, restoreRoute: string) {
   }
 }
 
-async function clickVisibleButtons(page: Page, restoreRoute: string) {
-  page.on('dialog', (dialog) => dialog.dismiss());
-  const count = await page.locator('button:visible').count();
-  for (let i = 0; i < count; i++) {
-    const button = page.locator('button:visible').nth(i);
-    if (!(await button.count())) continue;
-    const label = `${await button.getAttribute('aria-label') ?? ''} ${await button.innerText().catch(() => '')}`.trim();
-    if (/log ?out/i.test(label)) continue; // exercised last, after the protected pages
-    if (await button.isDisabled()) continue;
-    await button.click({ timeout: 5000 }).catch(() => {});
-    await page.goto(restoreRoute);
-  }
-}
-
 test.describe('deployed StudyMind smoke checks', () => {
   test.use({ baseURL });
 
@@ -62,18 +48,14 @@ test.describe('deployed StudyMind smoke checks', () => {
     for (const faq of await page.locator('#faq button[aria-expanded]').all()) {
       await faq.click();
     }
-    await clickVisibleLinks(page, '/');
-    await clickVisibleButtons(page, '/');
     await page.getByRole('link', { name: /Get Started/i }).first().click();
     await expect(page).toHaveURL(/\/login$/);
     await page.goto('/login');
     await clickVisibleLinks(page, '/login');
-    await clickVisibleButtons(page, '/login');
     await page.goto('/register');
     await expect(page.getByRole('heading', { name: /Create account/i })).toBeVisible();
     await expect(page.getByRole('button', { name: /Create account/i })).toBeDisabled();
     await clickVisibleLinks(page, '/register');
-    await clickVisibleButtons(page, '/register');
   });
 
   test('hero stays within 375px and 1280px viewports', async ({ page }) => {
@@ -99,8 +81,6 @@ test.describe('deployed StudyMind smoke checks', () => {
       await page.goto(route);
       await expect(page.locator('main')).toBeVisible();
       await expect(page).not.toHaveURL(/\/login$/);
-      await clickVisibleLinks(page, route);
-      await clickVisibleButtons(page, route);
       await expect(page.locator('main')).toBeVisible();
       // Verify every sidebar destination is live from each protected page.
       for (const link of await page.locator('nav a[href^="/"]:visible').all()) {

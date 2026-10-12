@@ -67,8 +67,8 @@ export function groundingThresholds(): {
     const lex = numOrNull(process.env.GROUNDING_LEXICAL_THRESHOLD_GEMINI);
     if (sim === null) {
       // No Gemini calibration has been run. The local value is NOT a valid
-      // substitute: the two spaces have different score distributions. Fail
-      // closed (refuse) rather than answer with an uncalibrated gate.
+      // substitute: the two spaces have different score distributions. Make
+      // both branches fail closed rather than allowing a zero lexical score.
       return { similarity: Number.POSITIVE_INFINITY, lexical: Number.POSITIVE_INFINITY, fromLegacyFallback: false };
     }
     return { similarity: sim, lexical: lex ?? 0, fromLegacyFallback: false };

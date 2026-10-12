@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import {
   Send, BookOpen, AlertTriangle, Mic, Volume2, Globe, Sparkles, Loader2, ExternalLink,
 } from 'lucide-react';
@@ -18,11 +19,16 @@ interface Message {
   result?: TutorAnswer;
 }
 
-const SUGGESTIONS = [
+const SOURCE_SUGGESTIONS = [
   'What problem does the Clock replacement algorithm solve?',
   'Why do large cache lines hurt random pointer chasing?',
   'What are the four conditions required for deadlock?',
   'What is the mass of a proton?',
+];
+const GENERAL_SUGGESTIONS = [
+  'Why is the sky blue?',
+  'How do I build a study habit that sticks?',
+  'Explain photosynthesis in simple terms.',
 ];
 
 /** Minimal shape of the Web Speech API we use; kept local so TS does not need
@@ -252,13 +258,13 @@ export default function TutorPage() {
             <div className="grid h-14 w-14 place-items-center rounded-2xl bg-brand-50 text-brand-600 dark:bg-brand-950 dark:text-brand-300">
               <Sparkles className="h-6 w-6" aria-hidden />
             </div>
-            <h2 className="mt-4 text-lg font-semibold">Ask anything from your material</h2>
+            <h2 className="mt-4 text-lg font-semibold">Your study buddy is ready</h2>
             <p className="mt-1.5 max-w-md text-sm text-muted">
               Ask anything. Answers from your uploads come with citations; general-knowledge answers get their own clearly labelled block. Upload material for more cited answers.
             </p>
-            {sources.length === 0 && <p className="mt-2 max-w-md text-xs text-muted">No uploads yet? You can still chat. Add material whenever you want cited answers.</p>}
+            {sources.length === 0 && <p className="mt-2 max-w-md text-xs text-muted">No uploads yet? You can still chat. <Link href="/knowledge-base" className="font-semibold text-brand-700 underline dark:text-brand-300">Upload material to get cited answers.</Link></p>}
             <div className="mt-6 flex max-w-lg flex-wrap justify-center gap-2">
-              {SUGGESTIONS.map((s) => (
+              {(sources.length === 0 ? GENERAL_SUGGESTIONS : SOURCE_SUGGESTIONS).map((s) => (
                 <button
                   key={s}
                   onClick={() => ask(s)}
@@ -292,7 +298,7 @@ export default function TutorPage() {
         {asking && (
           <div className="flex items-center gap-2 text-sm text-muted">
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-            Searching your material…
+            Checking your uploads — then I’ll help from there…
           </div>
         )}
         <div ref={endRef} />
@@ -318,7 +324,7 @@ export default function TutorPage() {
             }
           }}
           rows={1}
-          placeholder="Ask a question about your material…"
+          placeholder="Ask about your notes — or anything you’re curious about…"
           className="input max-h-32 min-h-[2.75rem] flex-1 resize-y py-3"
         />
         <button
@@ -430,14 +436,14 @@ function AnswerBlock({
       ? 'bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300'
       : result.groundingStatus === 'partial'
         ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-        : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300';
+        : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300';
 
   const label =
     result.groundingStatus === 'full'
       ? 'Fully grounded'
       : result.groundingStatus === 'partial'
         ? 'Partially grounded'
-        : result.outsideKnowledge ? 'General knowledge' : 'Offline source-only mode';
+        : result.outsideKnowledge ? 'General knowledge — not from your uploaded material' : 'Offline source-only mode';
 
   return (
     <div className="space-y-3">

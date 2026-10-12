@@ -37,7 +37,7 @@ export default function AssessmentsPage() {
       setAssessment(detail);
       setPhase('taking');
     } catch (err: any) {
-      toast.push('error', err?.message ?? 'Could not generate questions.');
+      toast.push('error', err?.message ?? 'I couldn’t build that quiz just now. Please try again.');
     } finally {
       setGenerating(false);
     }
@@ -53,7 +53,7 @@ export default function AssessmentsPage() {
             setReport(await api.report(assessment.assessment.id));
             setPhase('report');
           } catch (err: any) {
-            toast.push('error', err?.message ?? 'Could not submit.');
+            toast.push('error', err?.message ?? 'I couldn’t submit that answer. Please try again.');
           }
         }}
       />
@@ -224,7 +224,7 @@ function TakingView({
       }
       await onFinish();
     } catch (err: any) {
-      toast.push('error', err?.message ?? 'Could not submit.');
+      toast.push('error', err?.message ?? 'I couldn’t submit that answer. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -327,7 +327,7 @@ function TakingView({
           </Button>
         ) : (
           <Button onClick={submit} loading={submitting}>
-            Submit assessment
+            Finish this quiz
           </Button>
         )}
       </div>

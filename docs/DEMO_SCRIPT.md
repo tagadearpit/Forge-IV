@@ -46,10 +46,9 @@ file. It accepts, then flips to `failed` with a readable reason.
    > "Every factual sentence is backed by a unit that was actually retrieved."
 3. Click a citation chip → side panel opens with the exact location.
 4. Now ask something off-material: *"What is the mass of a proton?"*
-   *Watch it decline.*
-   > "This is the guard. Before generating, we score retrieval. If nothing is
-   > close enough, the model is never called — it has no opportunity to invent
-   > an answer."
+   *Point to the amber general-knowledge panel.*
+   > "This answer is clearly labelled as outside the uploaded material. It has
+   > no citations and never appears inside the cited-answer block."
 5. Toggle **हिन्दी**, ask one question.
    > "Hindi explanation, English technical terms, citations stay in the original."
 
@@ -107,17 +106,17 @@ Close on the architecture section of the landing page.
 
 ---
 
-## If asked: "how do you know it doesn't hallucinate?"
+## If asked: "How do you keep the answers honest?"
 
-Two guards, both measurable:
+Two safeguards, both visible:
 
-1. **Pre-generation gate.** Retrieval is scored on two signals (cosine similarity
-   *or* question-word coverage). If neither clears its threshold we decline
-   without calling the model. The threshold was calibrated, not guessed — 10/10
-   in-material questions kept, 14/14 off-material declined.
-2. **Post-generation citation audit.** Any citation pointing at a unit that was
-   not actually retrieved is stripped before display, and the count is logged.
-   The UI shows it: "N unverified citations removed."
+1. **Source-boundary check.** Retrieval is scored before answering. When the
+   material does not match, an optional general-knowledge response is returned
+   separately and explicitly marked outside the uploaded sources.
+2. **Citation audit.** Any citation pointing at a unit that was not actually
+   retrieved is stripped before display, and the count is logged. The UI shows
+   it: "N unverified citations removed." General answers have no citations and
+   never appear in the cited block.
 
 ## If asked: "what are your weaknesses?"
 

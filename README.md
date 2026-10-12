@@ -21,10 +21,10 @@ concept mentioned on Tuesday's slide was ever covered.
 
 StudyMind fixes three things at once:
 
-1. **Grounding.** Answers come only from the student's own uploaded material, and
-   every one carries the exact page, slide or timestamp it came from.
-2. **Honesty.** Questions the material does not cover are declined rather than
-   guessed.
+1. **Grounding.** When the student's uploaded material supports an answer, it
+   carries the exact page, slide or timestamp it came from.
+2. **Honesty.** Questions the material does not cover can receive a separate,
+   clearly labelled general-knowledge answer with no source citations.
 3. **Adaptivity.** A per-topic mastery model updated after every answer decides
    what to ask next.
 
@@ -33,7 +33,7 @@ StudyMind fixes three things at once:
 | Track D requirement | Status | Notes |
 |---|---|---|
 | 1. Multimodal knowledge base | **Partial** | PDF verified end to end. PPTX/image/video/audio code paths exist but are **untested against real files** — see KNOWN_LIMITATIONS §7. |
-| 2. Source grounding + refusal | Implemented | Calibrated and measured. Known over-refusal on paraphrases (22%). |
+| 2. Source-grounded and general answers | Implemented | Cited answers are kept separate from clearly labelled general-knowledge answers. |
 | 3. Adaptive assessment + verification + dedupe | Implemented | Numerical answers re-derived in code; misconceptions evidence-linked. |
 | 4. Learner model (BKT + forgetting curve) | Implemented | Real code, exercised by the simulation. |
 | 5. System evaluation | **Partial** | Harness + hand-written test set v2 shipped, but **no real framework has run** (no PyPI access, no judge key). Reports `framework: "none"`. |
@@ -136,45 +136,28 @@ guarantee can be **proved** rather than asserted.
 
 ---
 
-## How grounding works
+## How the tutor answers
 
-Two independent guards.
+The tutor first checks whether your uploaded material is a useful match.
 
-**1. A gate before generation.** Retrieval is scored on two signals. If neither
-clears its threshold the tutor returns `outside_material` **without calling the
-model at all** — so it has no opportunity to invent anything.
+- **When it matches:** the model drafts an answer from retrieved excerpts, and the
+  citation audit checks every unit ID before citations are shown.
+- **When it does not:** the online provider makes a separate general-knowledge
+  call. That answer is returned in `outsideKnowledge`, with no citations, and the
+  interface labels it as not from your uploaded material. General knowledge is
+  never blended into the cited-answer block.
+- **Offline mode:** the deterministic local provider does not answer from general
+  knowledge; it gives a friendly note and continues to answer from uploaded
+  sources when retrieval matches.
 
-Cosine similarity alone cannot separate the classes. Measured against the seeded
-corpus, in-material questions scored 0.10–0.51 and off-material questions
-0.02–0.17 — the distributions overlap, so a single threshold either
-over-refuses legitimate questions or under-refuses unrelated ones. Question-word
-coverage separates far more cleanly (0.50–1.00 vs 0.00–0.67). The gate is the OR
-of the two.
-
-Thresholds are **per provider**, because the local hashing vectoriser and Gemini
-produce different similarity distributions — a single shared number cannot be
-correct for both. They were **calibrated, not guessed**:
-
-```bash
-cd server && MONGODB_URI=<uri> npx tsx scripts/calibrate_grounding.ts
-```
-
-Result under the **local** provider: 10/10 in-material questions kept, 11/12
-off-material declined (the single accept is the deliberate
-quantum-chromodynamics paragraph the sample course plants as a refusal probe).
-
-> **Gemini thresholds are NOT CALIBRATED.** `GROUNDING_SIMILARITY_THRESHOLD_GEMINI`
-> ships empty on purpose. With no Gemini key available we could not measure the
-> real score distribution, and inventing a number would be fabricating evidence.
-> While unset, the Gemini gate **fails closed**: similarity alone can never admit
-> an answer, so only lexical coverage can. That is deliberately conservative and
-> will over-refuse until you calibrate. Run the script above with
-> `GEMINI_API_KEY` set and copy the printed values in.
+Grounding thresholds are provider-specific. Until Gemini has been calibrated,
+its material-grounding gate fails closed; questions that do not pass go to the
+separate general-knowledge path rather than being presented as source-grounded.
 
 **2. A citation audit after generation.** Any citation pointing at a unit that was
 not actually retrieved is stripped before the answer reaches the user. The count
 is recorded, surfaced in the UI ("N unverified citations removed"), and included
-in the evaluation metrics.
+in the evaluation metrics. General-knowledge answers have no source citations and do not enter this audit.
 
 ---
 
@@ -226,7 +209,9 @@ subject, genuinely absent — and 4 trivial). Ground truth is keyed by
 reseeds. The old templated set survives as `testset_smoke.json` and is
 **excluded** from these numbers.
 
-### Measured — retrieval & grounding (provider: local)
+### Historical baseline — retrieval gate (provider: local)
+
+> These measurements come from the earlier hard-refusal flow. They are retained as a historical test-set baseline, not as current product-level answer or citation claims. The live landing page reads the latest evaluation run instead.
 
 | Metric | Value |
 |---|---:|
@@ -234,24 +219,20 @@ reseeds. The old templated set survives as `testset_smoke.json` and is
 | citation recall | **0.764** |
 | citation precision | 0.293 |
 | context precision | 0.156 |
-| refusal accuracy — trivial | **1.000** |
-| refusal accuracy — **near-miss** | **0.500** |
-| **false-refusal rate on in-material** | **0.222** (12 of 54) |
+| legacy outside-material detection — trivial | **1.000** |
+| legacy outside-material detection — **near-miss** | **0.500** |
+| legacy source-gate miss rate on in-material | **0.222** (12 of 54) |
 
 Lexical proxies (secondary, not framework metrics): faithfulness 0.889,
 answer relevancy 0.268.
 
-**These numbers are bad in two specific, structural ways**, documented rather
-than tuned away:
-
-- **22% of legitimate questions are wrongly refused.** Every one is a paraphrase
-  or wordy question — the gate's lexical signal keys on literal overlap, which
-  paraphrases lack by construction.
-- **Only half of near-miss questions are refused.** They share one distinctive
-  term with the material (e.g. *"What is a **TLB** shootdown?"* matches on "TLB").
+**These are historical gate-only numbers, not current refusal behavior.** In the
+old flow, 22% of in-material queries missed the citation gate and half of
+near-miss queries were flagged outside the material. Today, a missed gate sends
+the request to the separate general-knowledge path instead of hard-declining it.
 
 An IDF-weighted coverage variant was built and measured: it improved near-miss
-refusal 0.500 → 0.583 but **worsened** over-refusal 0.222 → 0.259, because the
+detection 0.500 → 0.583 but **worsened** source-gate misses 0.222 → 0.259, because the
 0.55 threshold is calibrated for the unweighted distribution. Adopting it would
 have been an un-calibrated threshold swap dressed up as progress, so the gate
 stays on the signal it was calibrated against.
@@ -284,9 +265,10 @@ The full list lives in **`docs/KNOWN_LIMITATIONS.md`**. The headlines:
 
 - **No real evaluation framework has run** (no PyPI access, no judge key).
   Reported as `framework: "none"` with a non-zero exit.
-- **The grounding gate over-refuses** (22% false refusals on in-material
-  questions) and **under-refuses near-misses** (50%). Both structural.
-- **Gemini thresholds are not calibrated**, so the Gemini gate fails closed.
+- **Historical source-gate results** show 22% of in-material questions did not
+  pass the citation gate and 50% of near-misses were detected; they now route to
+  the separate general-knowledge path rather than a refusal.
+- **Gemini thresholds are not calibrated**, so the source-grounding gate fails closed; non-passing requests are clearly separated from cited answers.
 - **The Gemini provider has never made a live API call** — unit-tested against a
   fake provider only.
 - **Video/audio/PPTX ingestion is untested** against real files.
@@ -348,7 +330,7 @@ bash scripts/verify.sh      # 47 end-to-end checks
 ```
 
 Covers auth error copy, page-number preservation, grounded citations,
-off-material refusal, corrupt/empty/unsupported uploads, zero-question quizzes,
+outside-material classification, corrupt/empty/unsupported uploads, zero-question quizzes,
 answer-key non-leakage, dedupe, mastery movement and streak. Idempotent across
 runs.
 
@@ -423,10 +405,6 @@ cd server && MONGODB_URI="mongodb+srv://..." JWT_SECRET="..." npm run seed
 ```
 
 ---
-
-## Team
-
-`<Your Team Name>` — placeholder.
 
 ## License
 

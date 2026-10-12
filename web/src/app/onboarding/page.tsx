@@ -31,7 +31,7 @@ const RATINGS = [
 ];
 
 export default function OnboardingPage() {
-  const { user, ready } = useAuth();
+  const { user, ready, refreshUser } = useAuth();
   const router = useRouter();
   const toast = useToast();
   const [topics, setTopics] = useState<any[]>([]);
@@ -76,6 +76,7 @@ export default function OnboardingPage() {
         dailyStudyMinutes,
         language,
       });
+      await refreshUser();
       router.push('/dashboard');
     } catch (err: any) {
       toast.push('error', err?.message ?? 'Could not save your study preferences. Try once more.');

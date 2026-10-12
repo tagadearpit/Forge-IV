@@ -27,6 +27,7 @@ interface AuthState {
   register: (body: { name: string; email: string; phone: string; password: string }) => Promise<void>;
   logout: () => void;
   updateProfile: (body: Record<string, unknown>) => Promise<void>;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -95,9 +96,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     storeSession(getToken()!, res.user);
   }, []);
 
+  const refreshUser = useCallback(async () => {
+    const res = await api.me();
+    setUser(res.user);
+    const token = getToken();
+    if (token) storeSession(token, res.user);
+  }, []);
+
   const value = useMemo(
-    () => ({ user, ready, login, register, logout, updateProfile }),
-    [user, ready, login, register, logout, updateProfile]
+    () => ({ user, ready, login, register, logout, updateProfile, refreshUser }),
+    [user, ready, login, register, logout, updateProfile, refreshUser]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -38,7 +38,7 @@ export default function SettingsPage() {
           targetScore: targetScore ? Number(targetScore) : null,
         },
       });
-      toast.push('success', 'Profile updated.');
+      toast.push('success', 'All set — your profile is updated.');
     } catch (err: any) {
       toast.push('error', err?.message ?? 'Could not save.');
     } finally {
@@ -98,7 +98,7 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      <Button onClick={save} loading={saving}><Save className="h-4 w-4" aria-hidden /> Save changes</Button>
+      <Button onClick={save} loading={saving}><Save className="h-4 w-4" aria-hidden /> Save my changes</Button>
     </div>
   );
 }

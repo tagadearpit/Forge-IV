@@ -53,8 +53,8 @@ export default function StudyPlanPage() {
       {tasks.length === 0 ? (
         <EmptyState
           icon={<CalendarDays className="h-10 w-10" aria-hidden />}
-          title="No plan yet"
-          description="Upload material and take a diagnostic quiz — then your plan appears here."
+          title="Your plan starts with one small step"
+          description="Add a source and try a short quiz; I’ll build your plan from what you know."
           action={<Button onClick={() => (window.location.href='/assessments')}>Take a quiz</Button>}
         />
       ) : (

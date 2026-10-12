@@ -42,7 +42,7 @@ export default function MasteryPage() {
         <div className="space-y-3">{[0,1,2,3].map(i => <Skeleton key={i} className="h-14" />)}</div>
       ) : rows.length === 0 ? (
         <p className="card p-8 text-center text-muted">
-          No topics yet. Upload material to build your knowledge base.
+          No topics to measure yet. Add a source and we’ll start tracking what sticks.
         </p>
       ) : (
         <>

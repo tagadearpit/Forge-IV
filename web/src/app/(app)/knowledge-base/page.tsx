@@ -84,7 +84,7 @@ function KnowledgeBaseInner() {
     setProgress({ name: file.name, pct: 0 });
     try {
       await api.uploadSource(form, (pct) => setProgress({ name: file.name, pct }));
-      toast.push('success', `${file.name} uploaded. Indexing has started.`);
+      toast.push('success', `${file.name} is in — your library is indexing it now.`);
       load();
     } catch (err: any) {
       toast.push('error', err?.message ?? 'Upload failed.');
@@ -129,7 +129,7 @@ function KnowledgeBaseInner() {
         setSelected(null);
         setDetail(null);
       }
-      toast.push('success', 'Source deleted.');
+      toast.push('success', 'Done — that source is out of your library.');
       load();
     } catch (err: any) {
       toast.push('error', err?.message ?? 'Delete failed.');
@@ -212,7 +212,7 @@ function KnowledgeBaseInner() {
       {state === 'ready' && sources.length === 0 && (
         <EmptyState
           icon={<FileText className="h-10 w-10" aria-hidden />}
-          title="No sources yet"
+          title="Your library is ready for its first source"
           description="Upload your first lecture PDF or slide deck and the topic tree is built automatically."
           action={<Button onClick={() => fileRef.current?.click()}>Upload your first file</Button>}
         />
