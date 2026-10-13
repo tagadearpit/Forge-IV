@@ -335,16 +335,23 @@ router.delete(
   '/:id',
   requireAuth,
   asyncHandler(async (req: AuthedRequest, res) => {
-    const source = await Source.findOne({ _id: req.params.id, userId: req.userId });
+    // Remove the owner-scoped source first: this is the tombstone that stops
+    // ingestion/re-embedding workers from making further guarded updates.
+    const source = await Source.findOneAndDelete({ _id: req.params.id, userId: req.userId });
     if (!source) throw new ApiError(404, 'SOURCE_NOT_FOUND', 'That source does not exist.');
 
+    const units = await Unit.find({ sourceId: source._id, userId: req.userId }).select('_id').lean();
+    const unitIds = units.map((unit: any) => unit._id);
     await Promise.all([
-      Unit.deleteMany({ sourceId: source._id }),
-      Topic.deleteMany({ _id: { $in: source.topicIds ?? [] } }),
+      Unit.deleteMany({ sourceId: source._id, userId: req.userId }),
+      Topic.deleteMany({ _id: { $in: source.topicIds ?? [] }, userId: req.userId }),
     ]);
+    // Also remove any in-flight topic links omitted from the source snapshot.
+    if (unitIds.length) {
+      await Topic.updateMany({ userId: req.userId, sourceUnitIds: { $in: unitIds } }, { $pull: { sourceUnitIds: { $in: unitIds } } });
+    }
     // Remove the original file, but never fail the request if it is already gone.
     fs.unlink(path.join(env.UPLOAD_DIR, path.basename(source.fileUrl)), () => {});
-    await source.deleteOne();
 
     res.status(204).send();
   })

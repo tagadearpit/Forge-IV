@@ -10,6 +10,7 @@ import {
 } from '../utils/vectorSpace.js';
 import { contentWords } from '../utils/text.js';
 import { env } from '../config/env.js';
+import { isUnhelpfulExcerptDump, makeReadableExtractiveAnswer } from './answerFormatter.js';
 
 /**
  * ============================================================================
@@ -114,7 +115,7 @@ export async function retrieveUnits(userId: string, scope: RetrievalScope): Prom
   }
 
   const units = await Unit.find(filter)
-    .select('text location embedding embeddingProvider embeddingDim sourceId kind figureDescription')
+    .select('text location embedding embeddingProvider embeddingModel embeddingDim sourceId kind figureDescription')
     .lean();
 
   if (!units.length) return withExcludedUnits([], 0);
@@ -127,7 +128,7 @@ export async function retrieveUnits(userId: string, scope: RetrievalScope): Prom
   let space: VectorSpace = activeSpace();
   let qVec: number[] | null = null;
   try {
-    const [qv] = await ai.embed([scope.question]);
+    const [qv] = await ai.embed([scope.question], 'RETRIEVAL_QUERY');
     if (qv?.length) {
       qVec = qv;
       // Trust the returned vector's length over the configured default: it is
@@ -154,8 +155,9 @@ export async function retrieveUnits(userId: string, scope: RetrievalScope): Prom
     ? units.filter((u: any) => {
         const vec = u.embedding as number[] | undefined;
         if (!vec?.length) return false;
-        if (u.embeddingProvider && u.embeddingProvider !== space.provider) return false;
-        if (u.embeddingDim != null && Number(u.embeddingDim) !== space.dim) return false;
+        if (u.embeddingProvider !== space.provider) return false;
+        if (u.embeddingModel !== ai.embeddingModel) return false;
+        if (u.embeddingDim == null || Number(u.embeddingDim) !== space.dim) return false;
         return vec.length === space.dim;
       })
     : [];
@@ -435,20 +437,26 @@ export async function answerQuestion(
         answerStyle: opts.answerStyle, studyLevel: opts.studyLevel, history: opts.history,
       });
     }
+    const excerpts = hits.map((h) => ({ unitId: h.unitId, text: h.text }));
+    const answerIsDump = isUnhelpfulExcerptDump(draft.answer ?? '', excerpts);
+    const fallback = (!draft.answer?.trim() || answerIsDump) && draft.groundingStatus !== 'outside_material'
+      ? makeReadableExtractiveAnswer(question, excerpts, language)
+      : null;
     parsed = {
-      answer: draft.answer,
-      citedUnitIds: draft.citedUnitIds,
-      groundingStatus: draft.groundingStatus,
+      answer: fallback?.answer ?? draft.answer ?? '',
+      citedUnitIds: fallback?.citedUnitIds ?? draft.citedUnitIds,
+      groundingStatus: fallback && !fallback.answer ? 'outside_material' : draft.groundingStatus,
       outsideKnowledge: draft.outsideKnowledge,
     };
   } catch (err) {
     // A provider fault must not take the endpoint down: fall back to the best
     // retrieved text directly. Still grounded, still cited, still honest.
     console.warn('[tutor] groundedAnswer failed, falling back to extractive', (err as Error).message);
+    const fallback = makeReadableExtractiveAnswer(question, hits.map((h) => ({ unitId: h.unitId, text: h.text })), language);
     parsed = {
-      answer: hits.slice(0, 3).map((h) => h.text).join(' '),
-      citedUnitIds: hits.slice(0, 3).map((h) => h.unitId),
-      groundingStatus: 'partial',
+      answer: fallback.answer,
+      citedUnitIds: fallback.citedUnitIds,
+      groundingStatus: fallback.answer ? 'partial' : 'outside_material',
       outsideKnowledge: null,
     };
   }
@@ -483,10 +491,9 @@ export async function answerQuestion(
 
   let answer = (parsed.answer ?? '').trim();
   if (!answer) {
-    answer = hits
-      .slice(0, 3)
-      .map((h) => h.text)
-      .join(' ');
+    answer = language === 'hi'
+      ? 'मैं अभी सामग्री से कोई स्पष्ट, पढ़ने योग्य उत्तर नहीं निकाल सका।'
+      : 'I could not extract a clear, readable answer from the retrieved material.';
   }
 
   return {

@@ -111,6 +111,7 @@ describe('retrieveUnits embeds the query in the units\' space', () => {
       location: { page: 1 },
       embedding: fakeEmbed('The virtual memory subsystem provides isolation between processes.'),
       embeddingProvider: 'gemini',
+      embeddingModel: ai.embeddingModel,
       embeddingDim: FAKE_DIM,
     });
 
@@ -143,6 +144,7 @@ describe('retrieveUnits embeds the query in the units\' space', () => {
       location: { page: 1 },
       embedding: fakeEmbed('in the right space'),
       embeddingProvider: 'gemini',
+      embeddingModel: ai.embeddingModel,
       embeddingDim: FAKE_DIM,
     });
     // ...and one left over from the local provider at a different dimension.
@@ -171,7 +173,7 @@ describe('retrieveUnits embeds the query in the units\' space', () => {
     await cleanup();
   });
 
-  test('legacy units without embeddingProvider are accepted only if the dim matches', async () => {
+  test('legacy units without model identity are excluded until re-embedded', async () => {
     await seed();
     __setActiveSpace({ provider: 'local', dim: EMBEDDING_DIM });
 
@@ -187,7 +189,7 @@ describe('retrieveUnits embeds the query in the units\' space', () => {
     });
 
     const hits = await retrieveUnits(userId, { question: 'legacy unit', topK: 5 });
-    assert.equal(hits.length, 1, 'a dim-matching legacy unit must still be retrievable');
+    assert.equal(hits.length, 0, 'vectors without provider/model identity must not be compared');
 
     await cleanup();
   });
@@ -250,7 +252,7 @@ describe('grounding thresholds are provider-specific', () => {
       const { Source } = await import('../models/Source.js');
       const u = await User.create({ name: 'Model Judged', email: `${dbName}@test.local`, phone: '+919000000098', passwordHash: 'x' });
       const source = await Source.create({ userId: u._id, type: 'pdf', title: 'Excerpt Test', fileUrl: 'test.pdf', originalName: 'test.pdf', status: 'ready' });
-      await Unit.create({ userId: u._id, sourceId: source._id, kind: 'text', text: 'Section 2 explains virtual memory address translation and page tables.', location: { page: 2 }, embedding: fakeEmbed('Section 2 explains virtual memory address translation and page tables.'), embeddingProvider: 'gemini', embeddingDim: FAKE_DIM });
+      await Unit.create({ userId: u._id, sourceId: source._id, kind: 'text', text: 'Section 2 explains virtual memory address translation and page tables.', location: { page: 2 }, embedding: fakeEmbed('Section 2 explains virtual memory address translation and page tables.'), embeddingProvider: 'gemini', embeddingModel: ai.embeddingModel, embeddingDim: FAKE_DIM });
       (ai as any).embed = async (texts: string[]) => texts.map(fakeEmbed);
       let groundedCalled = false;
       let capturedHistory: unknown;

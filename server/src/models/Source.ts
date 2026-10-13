@@ -19,6 +19,8 @@ const SourceSchema = new Schema(
     status: { type: String, enum: SOURCE_STATUSES, default: 'queued', index: true },
     statusReason: { type: String, default: null },
     embeddingStatus: { type: String, enum: EMBEDDING_STATUSES, default: 'queued', index: true },
+    embeddingModel: { type: String, default: null, index: true },
+    embeddingRetryable: { type: Boolean, default: true },
     outline: {
       type: [{ title: { type: String, required: true }, page: { type: Number, default: null }, slide: { type: Number, default: null }, level: { type: Number, default: 1 } }],
       default: [],

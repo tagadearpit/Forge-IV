@@ -76,7 +76,7 @@ export const env = {
 
   GEMINI_API_KEY: geminiKey,
   GEMINI_MODEL: str('GEMINI_MODEL', 'gemini-2.0-flash'),
-  GEMINI_EMBED_MODEL: str('GEMINI_EMBED_MODEL', 'text-embedding-004'),
+  GEMINI_EMBED_MODEL: str('GEMINI_EMBED_MODEL', 'gemini-embedding-001'),
   provider,
 
   UPLOAD_DIR: resolveUploadDir(),

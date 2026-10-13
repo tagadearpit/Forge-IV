@@ -1,6 +1,7 @@
 import { env } from '../config/env.js';
 import { localEmbed, localEmbedBatch, EMBEDDING_DIM } from '../utils/embedding.js';
 import { contentWords, splitSentences } from '../utils/text.js';
+import { makeReadableExtractiveAnswer } from '../services/answerFormatter.js';
 
 /**
  * ============================================================================
@@ -75,9 +76,10 @@ export interface GroundedAnswerDraft {
  */
 export interface AIProvider {
   readonly name: string;
+  readonly embeddingModel: string;
   generateText(opts: GenerateOptions): Promise<string>;
   generateJSON<T>(opts: GenerateOptions): Promise<T>;
-  embed(texts: string[]): Promise<number[][]>;
+  embed(texts: string[], taskType?: 'RETRIEVAL_DOCUMENT' | 'RETRIEVAL_QUERY'): Promise<number[][]>;
   describeImage(opts: { dataBase64: string; mimeType: string; context?: string }): Promise<string>;
   transcribeAudio(opts: {
     dataBase64: string;
@@ -116,6 +118,9 @@ interface GeminiPart {
 class GeminiProvider implements AIProvider {
   readonly name = 'gemini';
   private base = 'https://generativelanguage.googleapis.com/v1beta';
+  private embeddingModelName = env.GEMINI_EMBED_MODEL || 'gemini-embedding-001';
+
+  get embeddingModel(): string { return this.embeddingModelName; }
 
   private async call(model: string, body: unknown, timeoutMs = 60_000): Promise<any> {
     const ctrl = new AbortController();
@@ -175,38 +180,64 @@ class GeminiProvider implements AIProvider {
     return parseJsonLoose<T>(raw);
   }
 
-  async embed(texts: string[]): Promise<number[][]> {
+  async embed(
+    texts: string[],
+    taskType: 'RETRIEVAL_DOCUMENT' | 'RETRIEVAL_QUERY' = 'RETRIEVAL_DOCUMENT'
+  ): Promise<number[][]> {
     if (!texts.length) return [];
-    // Batch to stay under request size limits.
     const BATCH = 100;
+    const model = this.embeddingModelName;
     const out: number[][] = [];
-    for (let i = 0; i < texts.length; i += BATCH) {
-      const slice = texts.slice(i, i + BATCH);
-      const body = {
-        requests: slice.map((t) => ({
-          model: `models/${env.GEMINI_EMBED_MODEL}`,
-          content: { parts: [{ text: t.slice(0, 8000) }] },
-        })),
-      };
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 60_000);
-      try {
-        const res = await fetch(`${this.base}/models/${env.GEMINI_EMBED_MODEL}:batchEmbedContents`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
-          body: JSON.stringify(body),
-          signal: ctrl.signal,
-        });
-        if (!res.ok) throw new Error(`Gemini embed ${res.status}`);
-        const data = (await res.json()) as { embeddings?: Array<{ values?: number[] }> };
-        for (const item of data.embeddings ?? []) {
-          out.push((item.values as number[]) ?? []);
-        }
-      } finally {
-        clearTimeout(timer);
+    try {
+      for (let i = 0; i < texts.length; i += BATCH) {
+        const slice = texts.slice(i, i + BATCH);
+        out.push(...await this.embedBatch(slice, model, taskType));
       }
+      return out;
+    } catch (err) {
+      const statusCode = (err as Error & { statusCode?: number }).statusCode;
+      // Render may still explicitly set retired text-embedding-004. Restart the
+      // whole batch after switching so one result never mixes model spaces.
+      if (statusCode !== 404 || model === 'gemini-embedding-001') throw err;
+      this.embeddingModelName = 'gemini-embedding-001';
+      console.warn(`[gemini] embedding model ${model} returned 404; retrying all vectors with gemini-embedding-001`);
+      return this.embed(texts, taskType);
     }
-    return out;
+  }
+
+  private async embedBatch(
+    texts: string[],
+    model: string,
+    taskType: 'RETRIEVAL_DOCUMENT' | 'RETRIEVAL_QUERY'
+  ): Promise<number[][]> {
+    const body = {
+      requests: texts.map((text) => ({
+        model: `models/${model}`,
+        content: { parts: [{ text: text.slice(0, 8000) }] },
+        taskType,
+        outputDimensionality: 768,
+      })),
+    };
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 60_000);
+    try {
+      const res = await fetch(`${this.base}/models/${model}:batchEmbedContents`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
+        body: JSON.stringify(body),
+        signal: ctrl.signal,
+      });
+      if (!res.ok) {
+        const detail = await res.text().catch(() => '');
+        const error = new Error(`Gemini embed ${res.status} (${model}): ${detail.slice(0, 240)}`) as Error & { statusCode?: number };
+        error.statusCode = res.status;
+        throw error;
+      }
+      const data = (await res.json()) as { embeddings?: Array<{ values?: number[] }> };
+      return (data.embeddings ?? []).map((item) => (item.values as number[]) ?? []);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   async describeImage(opts: { dataBase64: string; mimeType: string; context?: string }): Promise<string> {
@@ -277,15 +308,18 @@ class GeminiProvider implements AIProvider {
     history?: Array<{ role: 'user' | 'assistant'; content: string }>;
   }): Promise<GroundedAnswerDraft> {
     const listed = opts.excerpts.map((e, i) => `[${i + 1}] ${e.text}`).join('\n\n');
+    const styleRules = 'Write a clear mini-lesson, not a dump or close copy of the excerpts. Start with a direct 1–2 sentence answer, then organize the explanation with descriptive Markdown headings, short paragraphs, bullets, or numbered steps only where they help this question. Vary the structure to fit the question; do not repeat boilerplate headings or the same explanation twice. Paraphrase source facts. Omit document titles, running headers, page furniture, broken OCR strings, and isolated fragments. Do not infer missing facts; if the text is garbled, say which point is unclear and use only readable evidence. Use at most one concrete example, and only when the excerpts support it.';
     const system =
       opts.language === 'hi'
-        ? 'You are a study tutor. Answer ONLY from the SOURCE EXCERPTS. Write the explanation in Hindi, keeping technical terms in English in parentheses. Citations stay in English. If the excerpts do not contain the answer, set groundingStatus to "outside_material" and do not invent an explanation.'
-        : 'You are a study tutor. Answer ONLY from the SOURCE EXCERPTS. If the excerpts do not contain the answer, set groundingStatus to "outside_material" and do not invent an explanation.';
+        ? `You are a patient study tutor. Answer ONLY from the SOURCE EXCERPTS. ${styleRules} Write in Hindi, keeping technical terms in English in parentheses. Citations stay in English. If the excerpts do not answer the question, set groundingStatus to "outside_material" and do not invent an explanation.`
+        : `You are a patient study tutor. Answer ONLY from the SOURCE EXCERPTS. ${styleRules} If the excerpts do not answer the question, set groundingStatus to "outside_material" and do not invent an explanation.`;
 
     const history = opts.history?.length ? `CONVERSATION HISTORY (context only; retrieve and cite only the current excerpts):\n${opts.history.map((m) => `${m.role.toUpperCase()}: ${m.content}`).join('\n')}\n\n` : '';
     const prompt = `${history}SOURCE EXCERPTS (cite by index [n]):\n${listed}\n\nQUESTION: ${opts.question}
 
-Adapt the explanation to a ${opts.studyLevel ?? 'self-learner'} learner. ${opts.answerStyle === 'deep' ? 'Give a careful step-by-step explanation with an example when the excerpts support one.' : 'Keep the answer concise and easy to scan.'}
+Adapt the explanation to a ${opts.studyLevel ?? 'self-learner'} learner. ${opts.answerStyle === 'deep' ? 'Explain the concept step by step, with one source-supported example if helpful.' : 'Keep the answer concise but explanatory; do not simply quote or concatenate source sentences.'}
+
+For the answer string, use readable Markdown. Give a short direct answer first, then choose only the most useful headings or bullets for this specific question. Explain abbreviations and symbols in plain language. Never reproduce a whole excerpt or source header. Do not add fixed generic sections just to fill a template.
 
 Reply with STRICT JSON only:
 {
@@ -295,7 +329,7 @@ Reply with STRICT JSON only:
   "outsideKnowledge": null
 }`;
 
-    const parsed = await this.generateJSON<GroundedAnswerDraft>({ system, prompt, temperature: 0.2 });
+    const parsed = await this.generateJSON<GroundedAnswerDraft>({ system, prompt, temperature: 0.35, maxOutputTokens: 900 });
     return {
       answer: parsed.answer ?? '',
       citedUnitIds: Array.isArray(parsed.citedUnitIds) ? parsed.citedUnitIds.map(String) : [],
@@ -389,6 +423,7 @@ Rules:
  */
 class LocalProvider implements AIProvider {
   readonly name = 'local';
+  readonly embeddingModel = 'local-hash-v1';
 
   async generateText(opts: GenerateOptions): Promise<string> {
     const context = opts.context ?? [];
@@ -427,7 +462,7 @@ class LocalProvider implements AIProvider {
     return parseJsonLoose<T>(text);
   }
 
-  async embed(texts: string[]): Promise<number[][]> {
+  async embed(texts: string[], _taskType?: 'RETRIEVAL_DOCUMENT' | 'RETRIEVAL_QUERY'): Promise<number[][]> {
     return localEmbedBatch(texts);
   }
 
@@ -453,64 +488,16 @@ class LocalProvider implements AIProvider {
     excerpts: Array<{ unitId: string; text: string }>;
     language: 'en' | 'hi';
   }): Promise<GroundedAnswerDraft> {
-    const { question, excerpts, language } = opts;
-    if (!excerpts.length) {
+    const { answer, citedUnitIds } = makeReadableExtractiveAnswer(opts.question, opts.excerpts, opts.language);
+    if (!answer) {
       return { answer: '', citedUnitIds: [], groundingStatus: 'outside_material', outsideKnowledge: null };
     }
-
-    const qTerms = new Set(contentWords(question));
-    const perUnit = new Map<string, { text: string; score: number }>();
-
-    for (const ex of excerpts) {
-      let best = 0;
-      const picked: string[] = [];
-      for (const sentence of splitSentences(ex.text)) {
-        const terms = contentWords(sentence);
-        if (terms.length < 4) continue;
-        const overlap = terms.filter((t) => qTerms.has(t)).length;
-        if (!overlap) continue;
-        // Length-normalised so a long rambling sentence does not win by volume.
-        const score = overlap / Math.sqrt(terms.length);
-        if (score > best) best = score;
-        picked.push(sentence.trim());
-      }
-      // Keep the top sentences per unit, preserving their original order.
-      const ranked = [...new Set(picked)]
-        .sort((a, b) => {
-          const ta = contentWords(a);
-          const tb = contentWords(b);
-          const sa = ta.filter((t) => qTerms.has(t)).length / Math.sqrt(ta.length || 1);
-          const sb = tb.filter((t) => qTerms.has(t)).length / Math.sqrt(tb.length || 1);
-          return sb - sa;
-        })
-        .slice(0, 3);
-      if (ranked.length && best > 0) {
-        perUnit.set(ex.unitId, { text: ranked.join(' '), score: best });
-      }
-    }
-
-    if (!perUnit.size) {
-      return {
-        answer: '',
-        citedUnitIds: [],
-        groundingStatus: 'outside_material',
-        outsideKnowledge: null,
-      };
-    }
-
-    const ordered = [...perUnit.entries()].sort((a, b) => b[1].score - a[1].score).slice(0, 3);
-    const citedUnitIds = ordered.map(([id]) => id);
-
-    let answer = ordered.map(([, v]) => v.text).join(' ');
-    if (language === 'hi') {
-      answer = `नीचे आपकी सामग्री से लिखित उत्तर है:\n\n${answer}`;
-    }
-
-    // "full" when every cited unit actually contributes, "partial" otherwise.
-    const groundingStatus: GroundedAnswerDraft['groundingStatus'] =
-      citedUnitIds.length >= 2 ? 'full' : 'partial';
-
-    return { answer, citedUnitIds, groundingStatus, outsideKnowledge: null };
+    return {
+      answer,
+      citedUnitIds,
+      groundingStatus: citedUnitIds.length >= 2 ? 'full' : 'partial',
+      outsideKnowledge: null,
+    };
   }
 
   /**
@@ -875,6 +862,7 @@ export function providerInfo() {
   return {
     name: getAIProvider().name,
     embeddingDim: env.provider === 'gemini' ? 768 : EMBEDDING_DIM,
+    embeddingModel: getAIProvider().embeddingModel,
     groundedOnly: true,
   };
 }

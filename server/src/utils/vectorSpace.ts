@@ -21,7 +21,7 @@ export type EmbeddingProvider = 'gemini' | 'local';
 /** Dimension the local hashing vectoriser emits. */
 export const LOCAL_EMBEDDING_DIM = EMBEDDING_DIM;
 
-/** Dimension `text-embedding-004` emits. */
+/** Configured Gemini embedding output dimension (768 for gemini-embedding-001). */
 export const GEMINI_EMBEDDING_DIM = 768;
 
 export interface VectorSpace {

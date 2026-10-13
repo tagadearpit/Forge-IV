@@ -5,7 +5,6 @@ import { Topic } from '../models/Topic.js';
 import { getAIProvider } from '../ai/provider.js';
 import { chunkText } from '../utils/text.js';
 import { safeCosineSimilarity, localEmbed } from '../utils/embedding.js';
-import { activeSpace } from '../utils/vectorSpace.js';
 import { logEvent } from './events.js';
 import {
   extractPdf,
@@ -53,21 +52,26 @@ export async function ingestSource(
   opts: { force?: boolean } = {}
 ): Promise<IngestResult> {
   const started = Date.now();
-  const source = await Source.findById(sourceId);
-  if (!source) throw new ExtractionError('Source no longer exists.', 'lookup');
+  const source = await Source.findOne({ _id: sourceId, userId }).lean();
+  if (!source) return { sourceId, units: 0, topics: 0, failures: 0, durationMs: Date.now() - started };
 
   if (source.status === 'ready' && !opts.force) {
     return { sourceId, units: source.unitCount, topics: 0, failures: 0, durationMs: 0 };
   }
 
+  const sourceFilter = { _id: source._id, userId, status: { $ne: 'deleting' } };
+  const assertSourceActive = async () => {
+    if (!(await Source.exists(sourceFilter))) throw new SourceCancelledError();
+  };
   const setStatus = async (status: SourceStatus, progress: number, reason?: string) => {
-    source.status = status;
-    source.progress = progress;
-    if (reason !== undefined) source.statusReason = reason;
-    await source.save();
+    const update: Record<string, unknown> = { status, progress };
+    if (reason !== undefined) update.statusReason = reason;
+    const result = await Source.updateOne(sourceFilter, { $set: update });
+    if (!result.matchedCount) throw new SourceCancelledError();
   };
 
   let unitFailures = 0;
+  let insertedUnitIds: unknown[] = [];
 
   try {
     await setStatus('extracting', 0.1);
@@ -144,9 +148,12 @@ export async function ingestSource(
       );
     }
 
-    source.outline = buildSourceOutline(source.type, rawUnits) as never;
-    if (pageCount !== null) source.pageCount = pageCount;
-    if (durationSec !== null) source.durationSec = durationSec;
+    await assertSourceActive();
+    const sourceMetadata: Record<string, unknown> = { outline: buildSourceOutline(source.type, rawUnits) };
+    if (pageCount !== null) sourceMetadata.pageCount = pageCount;
+    if (durationSec !== null) sourceMetadata.durationSec = durationSec;
+    const metadataUpdate = await Source.updateOne(sourceFilter, { $set: sourceMetadata });
+    if (!metadataUpdate.matchedCount) throw new SourceCancelledError();
 
     /* ---------------------- 2. CHUNK ---------------------- */
     await setStatus('extracting', 0.4);
@@ -176,17 +183,20 @@ export async function ingestSource(
 
     /* ---------------------- 3. EMBED ---------------------- */
     await setStatus('indexing', 0.6);
-    source.embeddingStatus = 'pending';
-    await source.save();
-    const vectors = await embedWithBackoff(ai, chunked.map((c) => c.text));
-    const space = activeSpace();
+    const pending = await Source.updateOne(sourceFilter, { $set: { embeddingStatus: 'pending' } });
+    if (!pending.matchedCount) throw new SourceCancelledError();
+    const embedResult = await embedWithBackoff(ai, chunked.map((c) => c.text));
+    const vectors = embedResult.vectors;
+    const embeddingModel = ai.embeddingModel;
+    const embeddingProvider = ai.name as 'gemini' | 'local';
     const first = vectors?.find((v) => Array.isArray(v) && v.length);
     const embeddingReady = Boolean(vectors && vectors.length === chunked.length && first?.length);
     const embeddingDim = embeddingReady ? first!.length : null;
-    console.log(`[ingest] ${chunked.length} units -> ${embeddingReady ? `${space.provider}/${embeddingDim}-dim` : 'embedding pending (will retry)'}`);
+    console.log(`[ingest] ${chunked.length} units -> ${embeddingReady ? `${embeddingProvider}/${embeddingModel}/${embeddingDim}-dim` : `embedding pending${embedResult.retryable ? ' (will retry)' : ' (permanent 4xx; automatic retries stopped)'}`}`);
 
-    // Clear any previous units so re-ingestion does not duplicate content.
-    await Unit.deleteMany({ sourceId: source._id });
+    // Only mutate units while the owner-scoped source remains live.
+    await assertSourceActive();
+    await Unit.deleteMany({ sourceId: source._id, userId });
 
     const unitDocs = chunked.map((c, i) => ({
       sourceId: source._id,
@@ -197,13 +207,16 @@ export async function ingestSource(
       figureDescription: c.raw.figureDescription ?? null,
       speakerNotes: c.raw.speakerNotes ?? null,
       embedding: embeddingReady ? vectors![i] : undefined,
-      embeddingProvider: embeddingReady ? space.provider : null,
+      embeddingProvider: embeddingReady ? embeddingProvider : null,
+      embeddingModel: embeddingReady ? embeddingModel : null,
       embeddingDim: embeddingReady ? vectors![i].length : null,
       topicIds: [],
       charStart: c.charStart,
       charEnd: c.charEnd,
     }));
     const inserted = await Unit.insertMany(unitDocs, { ordered: false });
+    insertedUnitIds = inserted.map((unit) => unit._id);
+    await assertSourceActive();
     const unitsCreated = inserted.length;
 
     /* ---------------------- 4. TOPICS ---------------------- */
@@ -212,25 +225,31 @@ export async function ingestSource(
     try {
       topicsCreated = await buildTopicsForSource(userId, source._id, inserted, source.title);
     } catch (err) {
+      if (err instanceof SourceCancelledError) throw err;
       unitFailures++;
       console.warn('[ingest] topic extraction failed', (err as Error).message);
     }
 
     /* ---------------------- 5. READY ---------------------- */
-    source.unitCount = unitsCreated;
-    source.progress = 1;
-    source.status = 'ready';
-    source.statusReason = null;
-    source.embeddingStatus = embeddingReady ? 'ready' : 'pending';
-    source.stats = {
-      unitsTotal: unitsCreated,
-      unitsFailed: unitFailures,
-      figures: inserted.filter((u) => u.kind === 'figure').length,
-      indexedAt: new Date(),
-    };
-    source.topicIds = await Unit.distinct('topicIds', { sourceId: source._id });
-    await source.save();
-    if (!embeddingReady) scheduleReembedding(sourceId, userId, 0, 2_000);
+    const topicIds = await Unit.distinct('topicIds', { sourceId: source._id, userId });
+    const ready = await Source.updateOne(sourceFilter, { $set: {
+      unitCount: unitsCreated,
+      progress: 1,
+      status: 'ready',
+      statusReason: null,
+      embeddingStatus: embeddingReady ? 'ready' : 'pending',
+      embeddingModel,
+      embeddingRetryable: embedResult.retryable,
+      stats: {
+        unitsTotal: unitsCreated,
+        unitsFailed: unitFailures,
+        figures: inserted.filter((u) => u.kind === 'figure').length,
+        indexedAt: new Date(),
+      },
+      topicIds,
+    } });
+    if (!ready.matchedCount) throw new SourceCancelledError();
+    if (!embeddingReady && embedResult.retryable) scheduleReembedding(sourceId, userId, 0, 2_000);
 
     await logEvent(userId, 'source_ready', null, null, 'ingestion', { sourceId: String(source._id) });
 
@@ -242,14 +261,19 @@ export async function ingestSource(
       durationMs: Date.now() - started,
     };
   } catch (err) {
-    const message =
-      err instanceof ExtractionError ? err.message : `Ingestion failed: ${(err as Error).message}`;
+    if (err instanceof SourceCancelledError) {
+      await cleanupIngestArtifacts(sourceId, userId, insertedUnitIds);
+      return { sourceId, units: 0, topics: 0, failures: 0, durationMs: Date.now() - started };
+    }
+    const message = err instanceof ExtractionError ? err.message : `Ingestion failed: ${(err as Error).message}`;
     console.error('[ingest]', err);
-    source.status = 'failed';
-    source.statusReason = message;
-    source.embeddingStatus = 'failed';
-    source.progress = 1;
-    await source.save();
+    const failed = await Source.updateOne(sourceFilter, { $set: {
+      status: 'failed', statusReason: message, embeddingStatus: 'failed', progress: 1,
+    } });
+    if (!failed.matchedCount) {
+      await cleanupIngestArtifacts(sourceId, userId, insertedUnitIds);
+      return { sourceId, units: 0, topics: 0, failures: 0, durationMs: Date.now() - started };
+    }
     throw new ExtractionError(message, 'ingest');
   }
 }
@@ -264,8 +288,11 @@ export async function buildTopicsForSource(
   units: Array<{ _id: unknown; text: string }>,
   title: string
 ): Promise<number> {
+  const sourceFilter = { _id: sourceId as any, userId, status: { $ne: 'deleting' } };
+  if (!(await Source.exists(sourceFilter))) throw new SourceCancelledError();
   const ai = getAIProvider();
   const extracted = await ai.extractTopics({ texts: units.map((u) => u.text) });
+  if (!(await Source.exists(sourceFilter))) throw new SourceCancelledError();
   if (!extracted.topics?.length) return 0;
 
   const existing = await Topic.find({ userId }).lean();
@@ -275,6 +302,7 @@ export async function buildTopicsForSource(
   const createdIds: string[] = [];
 
   for (const t of extracted.topics) {
+    if (!(await Source.exists(sourceFilter))) throw new SourceCancelledError();
     // Merge rule: a proposed topic within 0.88 cosine of an existing topic is
     // the same concept, so reuse it instead of creating a near-duplicate node.
     const proposedEmbed = localEmbed(t.name);
@@ -292,7 +320,7 @@ export async function buildTopicsForSource(
     if (mergedWith) {
       createdIds.push(mergedWith);
       await Topic.updateOne(
-        { _id: mergedWith },
+        { _id: mergedWith, userId },
         { $addToSet: { sourceUnitIds: { $each: units.slice(0, 5).map((u) => u._id) } } }
       );
       continue;
@@ -327,17 +355,45 @@ export async function buildTopicsForSource(
     }
   }
 
-  if (ops.length) await Unit.bulkWrite(ops as never, { ordered: false });
+  if (!(await Source.exists(sourceFilter))) throw new SourceCancelledError();
+  if (ops.length) {
+    const scopedOps = ops.map((operation: any) => ({ updateOne: { filter: { ...operation.updateOne.filter, sourceId, userId }, update: operation.updateOne.update } }));
+    await Unit.bulkWrite(scopedOps as never, { ordered: false });
+  }
+  if (!(await Source.exists(sourceFilter))) throw new SourceCancelledError();
   return createdIds.length;
 }
 
 /* ------------------------------ helpers -------------------------------- */
 
+class SourceCancelledError extends Error {
+  constructor() { super('Source was deleted during ingestion.'); }
+}
+
+async function cleanupIngestArtifacts(sourceId: string, userId: string, knownUnitIds: unknown[] = []): Promise<void> {
+  const units = await Unit.find({ sourceId, userId }).select('_id').lean();
+  const unitIds = [...new Set([...units.map((unit: any) => String(unit._id)), ...knownUnitIds.map(String)])];
+  await Unit.deleteMany({ sourceId, userId });
+  if (unitIds.length) {
+    const touched = await Topic.find({ userId, sourceUnitIds: { $in: unitIds } }).select('_id').lean();
+    const topicIds = touched.map((topic: any) => topic._id);
+    if (topicIds.length) {
+      await Topic.updateMany({ _id: { $in: topicIds }, userId }, { $pull: { sourceUnitIds: { $in: unitIds } } });
+      await Topic.deleteMany({ _id: { $in: topicIds }, userId, sourceUnitIds: { $size: 0 } });
+    }
+  }
+}
+
+function isPermanentEmbeddingError(err: unknown): boolean {
+  const status = (err as Error & { statusCode?: number } | null)?.statusCode;
+  return typeof status === 'number' && status >= 400 && status < 500 && status !== 429;
+}
+
 async function embedWithBackoff(
   ai: ReturnType<typeof getAIProvider>,
   texts: string[],
   attempts = 3
-): Promise<number[][] | null> {
+): Promise<{ vectors: number[][] | null; retryable: boolean }> {
   for (let attempt = 0; attempt < attempts; attempt++) {
     try {
       const vectors = await ai.embed(texts);
@@ -345,13 +401,15 @@ async function embedWithBackoff(
       if (!vectors || vectors.length !== texts.length || !dim || vectors.some((v) => !Array.isArray(v) || v.length !== dim || v.some((n) => !Number.isFinite(n)))) {
         throw new Error('Embedding provider returned an incomplete or inconsistent batch.');
       }
-      return vectors;
+      return { vectors, retryable: true };
     } catch (err) {
+      const permanent = isPermanentEmbeddingError(err);
       console.warn(`[ingest] embedding attempt ${attempt + 1}/${attempts} failed`, (err as Error).message);
+      if (permanent) return { vectors: null, retryable: false };
       if (attempt + 1 < attempts) await new Promise((resolve) => setTimeout(resolve, 300 * 2 ** attempt));
     }
   }
-  return null;
+  return { vectors: null, retryable: true };
 }
 
 const reembedding = new Set<string>();
@@ -364,31 +422,42 @@ function scheduleReembedding(sourceId: string, userId: string, attempt: number, 
 async function reembedSource(sourceId: string, userId: string, attempt: number): Promise<void> {
   if (reembedding.has(sourceId)) return;
   reembedding.add(sourceId);
+  const sourceFilter = { _id: sourceId, userId, status: 'ready' };
+  let retryable = true;
   try {
-    const source = await Source.findOne({ _id: sourceId, userId, status: 'ready' });
+    const source = await Source.findOne(sourceFilter).select('_id').lean();
     if (!source) return;
+    const pending = await Source.updateOne(sourceFilter, { $set: { embeddingStatus: 'pending' } });
+    if (!pending.matchedCount) return;
+    const ai = getAIProvider();
     const units = await Unit.find({ sourceId, userId }).select('_id text').lean();
     if (!units.length) return;
-    const vectors = await embedWithBackoff(getAIProvider(), units.map((unit: any) => String(unit.text)));
-    if (!vectors) {
-      source.embeddingStatus = 'pending';
-      await source.save();
-      if (attempt < 8) scheduleReembedding(sourceId, userId, attempt + 1, Math.min(60_000, 2_000 * 2 ** attempt));
+    const result = await embedWithBackoff(ai, units.map((unit: any) => String(unit.text)));
+    retryable = result.retryable;
+    if (!result.vectors) {
+      await Source.updateOne(sourceFilter, { $set: { embeddingStatus: 'pending', embeddingModel: ai.embeddingModel, embeddingRetryable: retryable } });
+      if (retryable && attempt < 8) scheduleReembedding(sourceId, userId, attempt + 1, Math.min(60_000, 2_000 * 2 ** attempt));
       return;
     }
-    const provider = activeSpace().provider;
+    const vectors = result.vectors;
+    const embeddingModel = ai.embeddingModel;
+    const embeddingProvider = ai.name as 'gemini' | 'local';
+    if (!(await Source.exists(sourceFilter))) return;
     await Unit.bulkWrite(units.map((unit: any, index: number) => ({
       updateOne: {
         filter: { _id: unit._id, sourceId, userId },
-        update: { $set: { embedding: vectors[index], embeddingProvider: provider, embeddingDim: vectors[index].length } },
+        update: { $set: {
+          embedding: vectors[index], embeddingProvider, embeddingModel, embeddingDim: vectors[index].length,
+        } },
       },
     })) as never, { ordered: false });
-    source.embeddingStatus = 'ready';
-    await source.save();
-    console.log(`[ingest] re-embedded source ${sourceId} into ${provider}/${vectors[0].length}-dim space`);
+    const updated = await Source.updateOne(sourceFilter, { $set: { embeddingStatus: 'ready', embeddingModel, embeddingRetryable: true } });
+    if (updated.matchedCount) console.log(`[ingest] re-embedded source ${sourceId} into ${embeddingProvider}/${embeddingModel}/${vectors[0].length}-dim space`);
   } catch (err) {
+    retryable = !isPermanentEmbeddingError(err);
+    await Source.updateOne(sourceFilter, { $set: { embeddingStatus: 'pending', embeddingRetryable: retryable } });
     console.warn('[ingest] background re-embedding failed', (err as Error).message);
-    if (attempt < 8) scheduleReembedding(sourceId, userId, attempt + 1, Math.min(60_000, 2_000 * 2 ** attempt));
+    if (retryable && attempt < 8) scheduleReembedding(sourceId, userId, attempt + 1, Math.min(60_000, 2_000 * 2 ** attempt));
   } finally {
     reembedding.delete(sourceId);
   }
@@ -408,9 +477,14 @@ export async function resumeIngestionJobs(): Promise<void> {
     }
     setImmediate(() => void ingestSource(String(source._id), String(source.userId), filePath, String(source.mimeType ?? '')).catch((err) => console.error('[ingest:resume]', err.message)));
   }
-  const pendingEmbeddings = await Source.find({ status: 'ready', embeddingStatus: { $in: ['pending', 'queued'] } })
-    .select('_id userId')
-    .lean();
+  const activeEmbeddingModel = getAIProvider().embeddingModel;
+  const pendingEmbeddings = await Source.find({
+    status: 'ready',
+    $or: [
+      { embeddingStatus: { $in: ['pending', 'queued'] }, embeddingRetryable: { $ne: false } },
+      { embeddingModel: { $ne: activeEmbeddingModel } },
+    ],
+  }).select('_id userId').lean();
   for (const source of pendingEmbeddings as any[]) scheduleReembedding(String(source._id), String(source.userId), 0, 1_000);
 }
 

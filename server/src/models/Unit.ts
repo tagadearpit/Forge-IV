@@ -30,6 +30,7 @@ const UnitSchema = new Schema(
      * are NOT comparable, so retrieval filters on this before scoring.
      */
     embeddingProvider: { type: String, enum: ['gemini', 'local'], default: null, index: true },
+    embeddingModel: { type: String, default: null, index: true },
     embeddingDim: { type: Number, default: null },
     topicIds: [{ type: Schema.Types.ObjectId, ref: 'Topic', index: true }],
     charStart: { type: Number, default: null },

@@ -13,7 +13,7 @@ export const EMBEDDING_DIM = 256;
  * enough for the retrieval, dedupe and grounding-threshold mechanics to be
  * exercised for real when no embedding API is configured.
  *
- * With GEMINI_API_KEY set, `embed()` routes to text-embedding-004 instead and
+ * With GEMINI_API_KEY set, `embed()` routes to the configured Gemini embedding model and
  * this is only used for the duplicate-topic merge heuristic.
  */
 export function localEmbed(input: string): number[] {

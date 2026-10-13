@@ -150,6 +150,7 @@ describe('Fix 6 — no cross-user topic leakage', () => {
         location: { page: 1 },
         embedding: new Array(256).fill(0).map((_, i) => (i % 7) / 10),
         embeddingProvider: 'local',
+        embeddingModel: 'local-hash-v1',
         embeddingDim: 256,
         topicIds: [topic._id],
       });
