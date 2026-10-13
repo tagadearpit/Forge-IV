@@ -40,6 +40,12 @@ export interface RetrievedUnit {
   sourceType: string;
 }
 
+export type RetrievedUnits = RetrievedUnit[] & { excludedUnitCount?: number };
+
+function withExcludedUnits<T extends RetrievedUnit[]>(units: T, excludedUnitCount: number): T & { excludedUnitCount: number } {
+  return Object.assign(units, { excludedUnitCount });
+}
+
 export interface Citation {
   unitId: string;
   sourceId: string;
@@ -71,6 +77,8 @@ export interface TutorAnswer {
   topSimilarity: number;
   lexicalOverlap: number;
   audit: { citedRequested: number; citedVerified: number; stripped: number; declined: boolean };
+  unsearchableCount: number;
+  usingSource: { id: string; title: string } | null;
 }
 
 /* ----------------------------- retrieval ------------------------------ */
@@ -80,6 +88,8 @@ export interface RetrievalScope {
   topicIds?: string[];
   question: string;
   topK?: number;
+  locationFilter?: { pageStart?: number; pageEnd?: number; slideStart?: number; slideEnd?: number };
+  pageOrder?: boolean;
 }
 
 /**
@@ -90,18 +100,24 @@ export interface RetrievalScope {
  * points at Atlas the Unit.embedding index is available and this can be swapped
  * for a native vector index without changing any caller.
  */
-export async function retrieveUnits(userId: string, scope: RetrievalScope): Promise<RetrievedUnit[]> {
+export async function retrieveUnits(userId: string, scope: RetrievalScope): Promise<RetrievedUnits> {
   const topK = scope.topK ?? env.RETRIEVAL_TOP_K;
   const filter: Record<string, unknown> = { userId };
 
   if (scope.sourceIds?.length) filter.sourceId = { $in: scope.sourceIds };
   if (scope.topicIds?.length) filter.topicIds = { $in: scope.topicIds };
+  if (scope.locationFilter?.pageStart !== undefined || scope.locationFilter?.pageEnd !== undefined) {
+    filter['location.page'] = { ...(scope.locationFilter.pageStart !== undefined ? { $gte: scope.locationFilter.pageStart } : {}), ...(scope.locationFilter.pageEnd !== undefined ? { $lt: scope.locationFilter.pageEnd } : {}) };
+  }
+  if (scope.locationFilter?.slideStart !== undefined || scope.locationFilter?.slideEnd !== undefined) {
+    filter['location.slide'] = { ...(scope.locationFilter.slideStart !== undefined ? { $gte: scope.locationFilter.slideStart } : {}), ...(scope.locationFilter.slideEnd !== undefined ? { $lt: scope.locationFilter.slideEnd } : {}) };
+  }
 
   const units = await Unit.find(filter)
     .select('text location embedding embeddingProvider embeddingDim sourceId kind figureDescription')
     .lean();
 
-  if (!units.length) return [];
+  if (!units.length) return withExcludedUnits([], 0);
 
   // Embed the QUERY with the active provider — the same space the units were
   // written in. Previously this used localEmbed() unconditionally, which
@@ -122,50 +138,66 @@ export async function retrieveUnits(userId: string, scope: RetrievalScope): Prom
     console.warn('[retrieval] query embedding failed', (err as Error).message);
   }
 
-  // Fall back to the local space only if the active provider IS local.
-  if (!qVec) {
-    if (space.provider !== 'local') {
-      console.warn('[retrieval] no query vector and active provider is not local; refusing to retrieve');
-      return [];
-    }
+  const scoped = Boolean(scope.sourceIds?.length || scope.topicIds?.length);
+  let scored: Array<{ u: any; sim: number }> = [];
+  let excluded = 0;
+
+  // Fall back to local vectors only when the active provider is local. For an
+  // explicit source/topic scope, use lexical/page-order excerpts if Gemini
+  // embeddings are absent or still pending; never invent a fake local vector.
+  if (!qVec && space.provider === 'local') {
     qVec = localEmbed(scope.question);
     space = { provider: 'local', dim: qVec.length };
   }
 
-  // NEVER compare across spaces. Units stored by a different provider (or with a
-  // different dimensionality) are excluded rather than scored.
-  const compatible = units.filter((u: any) => {
-    const vec = u.embedding as number[] | undefined;
-    if (!vec?.length) return false;
-    if (u.embeddingProvider && u.embeddingProvider !== space.provider) return false;
-    if (u.embeddingDim != null && Number(u.embeddingDim) !== space.dim) return false;
-    // Legacy units written before this field existed: accept only if the
-    // dimension already matches the active space.
-    return vec.length === space.dim;
-  });
+  const compatible = qVec
+    ? units.filter((u: any) => {
+        const vec = u.embedding as number[] | undefined;
+        if (!vec?.length) return false;
+        if (u.embeddingProvider && u.embeddingProvider !== space.provider) return false;
+        if (u.embeddingDim != null && Number(u.embeddingDim) !== space.dim) return false;
+        return vec.length === space.dim;
+      })
+    : [];
+  excluded = units.length - compatible.length;
 
-  const excluded = units.length - compatible.length;
-  if (excluded > 0) {
-    console.warn(
-      `[retrieval] excluded ${excluded}/${units.length} unit(s) not in the active ` +
-        `${space.provider}/${space.dim}-dim space. Run scripts/reembed.ts to migrate them.`
-    );
+  if (qVec && compatible.length) {
+    scored = compatible.map((u: any) => ({ u, sim: safeCosineSimilarity(qVec!, u.embedding as number[]) }));
+  } else if (scoped) {
+    const terms = new Set(contentWords(scope.question));
+    scored = units.map((u: any) => {
+      const words = new Set(contentWords(String(u.figureDescription ?? u.text ?? '')));
+      const overlap = terms.size ? [...terms].filter((term) => words.has(term)).length / terms.size : 0;
+      return { u, sim: overlap };
+    });
+    // When no terms overlap, still present source pages for the model to judge.
+    if (scored.every((x) => x.sim === 0)) {
+      scored.sort((a, b) => Number(a.u.location?.page ?? a.u.location?.slide ?? 0) - Number(b.u.location?.page ?? b.u.location?.slide ?? 0));
+    } else {
+      scored.sort((a, b) => b.sim - a.sim);
+    }
+    // Lexical/page-order fallback actually includes these units; they are not excluded.
+    excluded = 0;
+  } else {
+    if (excluded > 0) {
+      console.warn(`[retrieval] excluded ${excluded}/${units.length} unit(s) without compatible ${space.provider}/${space.dim} embeddings`);
+    }
+    return withExcludedUnits([], excluded);
   }
 
-  const scored = compatible.map((u: any) => ({
-    u,
-    sim: safeCosineSimilarity(qVec, u.embedding as number[]),
-  }));
-  scored.sort((a, b) => b.sim - a.sim);
+  if (excluded > 0) {
+    console.warn(`[retrieval] excluded ${excluded}/${units.length} unit(s) without compatible ${space.provider}/${space.dim} embeddings`);
+  }
+  scored.sort((a, b) => scope.pageOrder
+    ? Number(a.u.location?.page ?? a.u.location?.slide ?? a.u.location?.startSec ?? 0) - Number(b.u.location?.page ?? b.u.location?.slide ?? b.u.location?.startSec ?? 0)
+    : b.sim - a.sim);
 
   const top = scored.slice(0, topK);
   const sourceIds = [...new Set(top.map((s: any) => String(s.u.sourceId)))];
-  const sources = await Source.find({ _id: { $in: sourceIds } })
-    .select('title type')
-    .lean();
+  const sources = await Source.find({ _id: { $in: sourceIds } }).select('title type').lean();
   const sourceMap = new Map(sources.map((s: any) => [String(s._id), s]));
 
-  return top.map(({ u, sim }: any) => {
+  const results = top.map(({ u, sim }: any) => {
     const src = sourceMap.get(String(u.sourceId));
     return {
       unitId: String(u._id),
@@ -178,6 +210,7 @@ export async function retrieveUnits(userId: string, scope: RetrievalScope): Prom
       sourceType: src?.type ?? 'text',
     };
   });
+  return withExcludedUnits(results, excluded);
 }
 
 export function lexicalOverlap(question: string, hits: RetrievedUnit[]): number {
@@ -236,8 +269,9 @@ export function idfWeightedOverlap(question: string, hits: RetrievedUnit[]): num
 /** Grounding decision: either signal is sufficient to attempt an answer. */
 export function isGrounded(topSimilarity: number, overlap: number): boolean {
   const t = groundingThresholds();
-  // With an uncalibrated Gemini space both thresholds are +Infinity, so neither
-  // signal passes accidentally. Failing closed is the safe direction.
+  // Without provider-specific calibration, retrieval is only a candidate list;
+  // groundedAnswer itself decides whether the excerpts answer the question.
+  if (!t.calibrated) return true;
   return topSimilarity >= t.similarity || overlap >= t.lexical;
 }
 
@@ -246,25 +280,85 @@ export function isGrounded(topSimilarity: number, overlap: number): boolean {
 export async function answerQuestion(
   userId: string,
   question: string,
-  opts: { scope?: { sourceIds?: string[]; topicIds?: string[] }; language?: 'en' | 'hi'; answerStyle?: 'quick' | 'deep'; studyLevel?: string } = {}
+  opts: { scope?: { sourceIds?: string[]; topicIds?: string[]; sectionTitle?: string }; language?: 'en' | 'hi'; answerStyle?: 'quick' | 'deep'; studyLevel?: string; history?: Array<{ role: 'user' | 'assistant'; content: string }> } = {}
 ): Promise<TutorAnswer> {
   const language: 'en' | 'hi' = opts.language === 'hi' ? 'hi' : 'en';
-  const topK = env.RETRIEVAL_TOP_K;
+  const baseScope = opts.scope ?? {};
+  const locationIntent = Boolean(baseScope.sectionTitle) || /\b(?:document|upload|section|chapter|page|slide)\b|that section|summari[sz]e (?:this|that|my) (?:upload|document|chapter|section)/i.test(question);
+  const explicitSourceIds = baseScope.sourceIds ?? [];
+  let sourceIds = explicitSourceIds;
+  let locationFilter: RetrievalScope['locationFilter'];
+  let pageOrder = false;
+  let resolvedSource: any = null;
+  if (locationIntent) {
+    if (sourceIds.length === 1) resolvedSource = await Source.findOne({ _id: sourceIds[0], userId }).select('title outline type').lean();
+    else if (sourceIds.length > 1) resolvedSource = await Source.findOne({ _id: { $in: sourceIds }, userId, status: 'ready' }).sort({ createdAt: -1 }).select('title outline type').lean();
+    else if (!baseScope.topicIds?.length) resolvedSource = await Source.findOne({ userId, status: 'ready' }).sort({ createdAt: -1 }).select('title outline type').lean();
+    if (resolvedSource) {
+      sourceIds = [String(resolvedSource._id)];
+      const previousContext = [...(opts.history ?? [])].reverse().find((m) => m.role === 'user')?.content ?? '';
+      const locQuestion = `${question} ${previousContext} ${baseScope.sectionTitle ?? ''}`;
+      const section = /\b(?:section|chapter)\s+(\d+(?:\.\d+)*)/i.exec(locQuestion);
+      const page = /\bpage\s+(\d+)\b/i.exec(question);
+      const slide = /\bslide\s+(\d+)\b/i.exec(question);
+      const outline = (resolvedSource.outline ?? []) as Array<{ title: string; page?: number | null; slide?: number | null; level?: number }>;
+      if (page) { const n = Number(page[1]); locationFilter = { pageStart: n, pageEnd: n + 1 }; pageOrder = true; }
+      else if (slide) { const n = Number(slide[1]); locationFilter = { slideStart: n, slideEnd: n + 1 }; pageOrder = true; }
+      else if (section || baseScope.sectionTitle) {
+        const number = section?.[1];
+        const matchIndex = outline.findIndex((e) => {
+          if (number) {
+            const found = /^(?:(?:chapter|section|unit)\s+)?(\d+(?:\.\d+)*)\b/i.exec(e.title);
+            return found?.[1] === number;
+          }
+          return e.title.trim().toLowerCase() === baseScope.sectionTitle?.trim().toLowerCase();
+        });
+        if (matchIndex >= 0) {
+          const match = outline[matchIndex];
+          const locKey = match.page != null ? 'page' : match.slide != null ? 'slide' : null;
+          const start = locKey ? Number(match[locKey] ?? 0) : null;
+          const next = locKey ? outline.slice(matchIndex + 1).find((e) => (e.level ?? 1) <= (match.level ?? 1) && e[locKey] != null) : null;
+          if (locKey && start != null) locationFilter = locKey === 'page' ? { pageStart: start, ...(next?.page != null ? { pageEnd: Number(next.page) } : {}) } : { slideStart: start, ...(next?.slide != null ? { slideEnd: Number(next.slide) } : {}) };
+        }
+        pageOrder = true;
+      } else if (/that section/i.test(question) && previousContext) pageOrder = true;
+      else pageOrder = true;
+    }
+  }
+  const effectiveScope = { ...baseScope, ...(sourceIds.length ? { sourceIds } : {}) };
+  const explicitlyScoped = Boolean(effectiveScope.sourceIds?.length || effectiveScope.topicIds?.length);
+  const topK = locationIntent ? Math.max(env.RETRIEVAL_TOP_K, 48) : env.RETRIEVAL_TOP_K;
 
+  const isFollowUp = /^(?:go deeper|tell me more|explain more|why|how so|what about that|expand on that|continue|elaborate)(?:\s|$|[?.!])/i.test(question.trim());
+  const previousUser = [...(opts.history ?? [])].reverse().find((m) => m.role === 'user')?.content;
+  const previousAssistant = [...(opts.history ?? [])].reverse().find((m) => m.role === 'assistant')?.content;
+  const retrievalQuestion = isFollowUp && previousUser ? `${previousUser}\nFollow-up: ${question}${previousAssistant ? `\nRelevant prior answer: ${previousAssistant.slice(0, 1200)}` : ''}` : question;
   const hits = await retrieveUnits(userId, {
-    question,
+    question: retrievalQuestion,
     topK,
-    sourceIds: opts.scope?.sourceIds,
-    topicIds: opts.scope?.topicIds,
+    sourceIds: effectiveScope.sourceIds,
+    topicIds: effectiveScope.topicIds,
+    locationFilter,
+    pageOrder,
   });
 
   const audit = { citedRequested: 0, citedVerified: 0, stripped: 0, declined: false };
+  const usedSources = [...new Map(hits.map((h) => [h.sourceId, h.sourceTitle])).entries()];
+  const usingSource = usedSources.length === 1 ? { id: usedSources[0][0], title: usedSources[0][1] } : null;
 
-  // Uses the calibrated, unweighted coverage signal. The citation audit below
-  // remains unchanged and applies only to answers grounded in retrieved units.
+  // The numeric gate is only for unscoped RAG. Explicit scopes are already a
+  // user instruction to consult those excerpts; the model decides relevance.
   const overlap = lexicalOverlap(question, hits);
   const ai = getAIProvider();
-  if (!hits.length || !isGrounded(hits[0].similarity, overlap)) {
+  if (!hits.length && explicitlyScoped) {
+    return {
+      answer: language === 'hi' ? 'इस चुने हुए स्रोत में अभी कोई पढ़ने योग्य सामग्री उपलब्ध नहीं है।' : 'There are no indexed parts available in this selected source or topic yet.',
+      citations: [], groundingStatus: 'outside_material', outsideKnowledge: null, language,
+      topSimilarity: 0, lexicalOverlap: 0, audit,
+      unsearchableCount: hits.excludedUnitCount ?? 0, usingSource: null,
+    };
+  }
+  if (!hits.length || (!explicitlyScoped && !isGrounded(hits[0].similarity, overlap))) {
     const common = {
       citations: [] as Citation[],
       groundingStatus: 'outside_material' as GroundingStatus,
@@ -272,6 +366,8 @@ export async function answerQuestion(
       topSimilarity: hits[0]?.similarity ?? 0,
       lexicalOverlap: overlap,
       audit,
+      unsearchableCount: hits.excludedUnitCount ?? 0,
+      usingSource: null,
     };
     if (ai.name === 'local') {
       return {
@@ -284,10 +380,11 @@ export async function answerQuestion(
     }
     try {
       const outsideKnowledge = await ai.generalAnswer({
-        question,
+        question: retrievalQuestion,
         language,
         answerStyle: opts.answerStyle,
         studyLevel: opts.studyLevel,
+        history: opts.history,
       });
       if (outsideKnowledge?.trim()) {
         return { ...common, answer: '', outsideKnowledge: outsideKnowledge.trim() };
@@ -314,13 +411,30 @@ export async function answerQuestion(
 
   let parsed: TutorJson;
   try {
-    const draft = await ai.groundedAnswer({
-      question,
-      excerpts: hits.map((h) => ({ unitId: h.unitId, text: h.text })),
-      language,
-      answerStyle: opts.answerStyle,
-      studyLevel: opts.studyLevel,
-    });
+    const summaryIntent = /\b(?:summari[sz]e|summary|overview|recap)\b/i.test(question);
+    let draft;
+    if (locationIntent && summaryIntent && hits.length > 8) {
+      const mapped: Array<{ answer: string; citedUnitIds: string[] }> = [];
+      for (let i = 0; i < hits.length; i += 6) {
+        const batch = hits.slice(i, i + 6);
+        const map = await ai.groundedAnswer({
+          question: `Summarize these page-ordered excerpts briefly, retaining important facts. ${question}`,
+          excerpts: batch.map((h) => ({ unitId: h.unitId, text: h.text })), language,
+          answerStyle: 'quick', studyLevel: opts.studyLevel, history: opts.history,
+        });
+        if (map.answer?.trim()) mapped.push({ answer: map.answer.trim(), citedUnitIds: map.citedUnitIds.filter((id) => batch.some((h) => h.unitId === id)) });
+      }
+      const reduceExcerpts = mapped.flatMap((m) => m.citedUnitIds.map((unitId) => ({ unitId, text: m.answer })));
+      draft = reduceExcerpts.length ? await ai.groundedAnswer({
+        question: `Combine these partial summaries into one coherent overview. Keep page-level facts and cite only excerpt IDs. Original request: ${question}`,
+        excerpts: reduceExcerpts, language, answerStyle: opts.answerStyle, studyLevel: opts.studyLevel, history: opts.history,
+      }) : { answer: mapped.map((m) => m.answer).join('\n\n'), citedUnitIds: mapped.flatMap((m) => m.citedUnitIds), groundingStatus: 'partial' as GroundingStatus, outsideKnowledge: null };
+    } else {
+      draft = await ai.groundedAnswer({
+        question, excerpts: hits.map((h) => ({ unitId: h.unitId, text: h.text })), language,
+        answerStyle: opts.answerStyle, studyLevel: opts.studyLevel, history: opts.history,
+      });
+    }
     parsed = {
       answer: draft.answer,
       citedUnitIds: draft.citedUnitIds,
@@ -384,6 +498,8 @@ export async function answerQuestion(
     topSimilarity: hits[0].similarity,
     lexicalOverlap: overlap,
     audit,
+    unsearchableCount: hits.excludedUnitCount ?? 0,
+    usingSource,
   };
 }
 

@@ -91,9 +91,10 @@ export interface AIProvider {
     language: 'en' | 'hi';
     answerStyle?: 'quick' | 'deep';
     studyLevel?: string;
+    history?: Array<{ role: 'user' | 'assistant'; content: string }>;
   }): Promise<GroundedAnswerDraft>;
   /** Answer without source material, for a separately labelled outside-source block. */
-  generalAnswer(opts: { question: string; language: 'en' | 'hi'; answerStyle?: 'quick' | 'deep'; studyLevel?: string }): Promise<string | null>;
+  generalAnswer(opts: { question: string; language: 'en' | 'hi'; answerStyle?: 'quick' | 'deep'; studyLevel?: string; history?: Array<{ role: 'user' | 'assistant'; content: string }> }): Promise<string | null>;
   /** Grounded question drafting for one question type. */
   draftQuestions(opts: {
     type: 'mcq' | 'short' | 'numerical';
@@ -273,6 +274,7 @@ class GeminiProvider implements AIProvider {
     language: 'en' | 'hi';
     answerStyle?: 'quick' | 'deep';
     studyLevel?: string;
+    history?: Array<{ role: 'user' | 'assistant'; content: string }>;
   }): Promise<GroundedAnswerDraft> {
     const listed = opts.excerpts.map((e, i) => `[${i + 1}] ${e.text}`).join('\n\n');
     const system =
@@ -280,10 +282,8 @@ class GeminiProvider implements AIProvider {
         ? 'You are a study tutor. Answer ONLY from the SOURCE EXCERPTS. Write the explanation in Hindi, keeping technical terms in English in parentheses. Citations stay in English. If the excerpts do not contain the answer, set groundingStatus to "outside_material" and do not invent an explanation.'
         : 'You are a study tutor. Answer ONLY from the SOURCE EXCERPTS. If the excerpts do not contain the answer, set groundingStatus to "outside_material" and do not invent an explanation.';
 
-    const prompt = `SOURCE EXCERPTS (cite by index [n]):
-${listed}
-
-QUESTION: ${opts.question}
+    const history = opts.history?.length ? `CONVERSATION HISTORY (context only; retrieve and cite only the current excerpts):\n${opts.history.map((m) => `${m.role.toUpperCase()}: ${m.content}`).join('\n')}\n\n` : '';
+    const prompt = `${history}SOURCE EXCERPTS (cite by index [n]):\n${listed}\n\nQUESTION: ${opts.question}
 
 Adapt the explanation to a ${opts.studyLevel ?? 'self-learner'} learner. ${opts.answerStyle === 'deep' ? 'Give a careful step-by-step explanation with an example when the excerpts support one.' : 'Keep the answer concise and easy to scan.'}
 
@@ -304,7 +304,7 @@ Reply with STRICT JSON only:
     };
   }
 
-  async generalAnswer(opts: { question: string; language: 'en' | 'hi'; answerStyle?: 'quick' | 'deep'; studyLevel?: string }): Promise<string | null> {
+  async generalAnswer(opts: { question: string; language: 'en' | 'hi'; answerStyle?: 'quick' | 'deep'; studyLevel?: string; history?: Array<{ role: 'user' | 'assistant'; content: string }> }): Promise<string | null> {
     const languageInstruction = opts.language === 'hi'
       ? 'Answer in Hindi, keeping important technical terms in English in parentheses.'
       : 'Answer in English.';
@@ -313,9 +313,9 @@ Reply with STRICT JSON only:
       : 'Give a concise, friendly answer in a few short paragraphs.';
     return this.generateText({
       system: `You are a careful study buddy answering from general knowledge, not from uploaded course material. ${languageInstruction} ${depthInstruction} Do not claim this answer is supported by the learner’s sources. If uncertain or the question needs current information, say so clearly.`,
-      prompt: `Learner level: ${opts.studyLevel ?? 'self-learner'}.
+      prompt: `${opts.history?.length ? `Recent conversation for context (do not treat it as source evidence):\n${opts.history.map((m) => `${m.role.toUpperCase()}: ${m.content}`).join('\n')}\n\n` : ''}Learner level: ${opts.studyLevel ?? 'self-learner'}.
 Question: ${opts.question}
-Answer clearly and accurately.`,
+Answer clearly and accurately, resolving follow-ups using the conversation context.`, 
       temperature: 0.3,
       maxOutputTokens: opts.answerStyle === 'deep' ? 1200 : 500,
     });

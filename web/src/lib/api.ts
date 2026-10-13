@@ -128,6 +128,8 @@ export interface SourceSummary {
   title: string;
   status: 'queued' | 'extracting' | 'indexing' | 'ready' | 'failed';
   statusReason: string | null;
+  embeddingStatus: 'queued' | 'pending' | 'ready' | 'failed';
+  outline: Array<{ title: string; page: number | null; slide: number | null; level: number }>;
   progress: number;
   pageCount: number | null;
   durationSec: number | null;
@@ -160,6 +162,10 @@ export interface TutorAnswer {
     stripped: number;
     declined: boolean;
   };
+  unsearchableCount?: number;
+  usingSource?: { id: string; title: string } | null;
+  threadId?: string;
+  messageId?: string;
 }
 
 export interface TopicNode {
@@ -234,8 +240,19 @@ export const api = {
 
   topics: () => apiFetch<{ topics: TopicNode[]; flat: TopicNode[] }>('/topics'),
 
-  ask: (body: { question: string; language?: 'en' | 'hi'; scope?: Record<string, string[]> }) =>
+  ask: (body: { question: string; threadId?: string; language?: 'en' | 'hi'; scope?: { sourceIds?: string[]; topicIds?: string[]; sectionTitle?: string } }) =>
     apiFetch<TutorAnswer>('/tutor/ask', { method: 'POST', body: JSON.stringify(body) }),
+  generatePdf: async (body: { messageId?: string; threadId?: string; prompt?: string }) => {
+    const { url } = await apiFetch<{ url: string }>('/tutor/pdf', { method: 'POST', body: JSON.stringify(body) });
+    const token = getToken();
+    const res = await fetch(`${API_URL}${url}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    if (!res.ok) throw new Error('Could not download the PDF report.');
+    return res.blob();
+  },
+  chatHistory: () => apiFetch<{ threads: Array<{ id: string; title: string; scope: any; lastMessageAt: string }> }>('/tutor/threads'),
+  chatThread: (id: string) => apiFetch<any>(`/tutor/threads/${id}`),
+  renameThread: (id: string, title: string) => apiFetch<any>(`/tutor/threads/${id}`, { method: 'PATCH', body: JSON.stringify({ title }) }),
+  deleteThread: (id: string) => apiFetch<void>(`/tutor/threads/${id}`, { method: 'DELETE' }),
 
   createAssessment: (body: Record<string, unknown>) =>
     apiFetch<any>('/assessments', { method: 'POST', body: JSON.stringify(body) }),

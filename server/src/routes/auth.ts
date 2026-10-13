@@ -7,6 +7,17 @@ import { ApiError, asyncHandler, validateBody } from '../middleware/error.js';
 import { requireAuth, signToken, AuthedRequest } from '../middleware/auth.js';
 import { authLimiter } from '../middleware/rateLimit.js';
 import { logEvent } from '../services/events.js';
+import { Source } from '../models/Source.js';
+import { Unit } from '../models/Unit.js';
+import { Topic } from '../models/Topic.js';
+import { ChatThread } from '../models/ChatThread.js';
+import { ChatMessage } from '../models/ChatMessage.js';
+import { Assessment } from '../models/Assessment.js';
+import { PdfReport } from '../models/PdfReport.js';
+import { Mastery } from '../models/Mastery.js';
+import { Event } from '../models/Event.js';
+import { Question } from '../models/Question.js';
+import { Response as AssessmentResponse } from '../models/Response.js';
 
 const router = Router();
 
@@ -181,6 +192,30 @@ router.patch(
  * deliberate 204 no-op that exists so the client has one obvious call to make
  * (and a place to hang future token-blacklist logic).
  */
+// Explicit account/data erasure: every collection is filtered by the authenticated owner.
+router.delete('/me/data', requireAuth, validateBody(z.object({ confirm: z.literal('DELETE') })), asyncHandler(async (req: AuthedRequest, res) => {
+  const userId = req.userId!;
+  const sources = await Source.find({ userId }).select('fileUrl').lean();
+  const pdfReports = await PdfReport.find({ userId }).select('fileId').lean();
+  const fs = await import('node:fs/promises');
+  const path = await import('node:path');
+  await Promise.all([
+    ...sources.map((s: any) => fs.rm(path.join(env.UPLOAD_DIR, path.basename(String(s.fileUrl))), { force: true }).catch(() => {})),
+    ...pdfReports.map((p: any) => fs.rm(path.join(env.UPLOAD_DIR, 'pdf-reports', `${p.fileId}.pdf`), { force: true }).catch(() => {})),
+  ]);
+  const ownedAssessments = await Assessment.find({ userId }).distinct('_id');
+  await Promise.all([
+    ChatMessage.deleteMany({ userId }), ChatThread.deleteMany({ userId }),
+    Unit.deleteMany({ userId }), Topic.deleteMany({ userId }), Source.deleteMany({ userId }),
+    AssessmentResponse.deleteMany({ userId }), Question.deleteMany({ userId }),
+    Assessment.deleteMany({ userId }), Mastery.deleteMany({ userId }), Event.deleteMany({ userId }), PdfReport.deleteMany({ userId }),
+  ]);
+  // Defensive cleanup for any legacy response rows linked through owned assessments.
+  if (ownedAssessments.length) await AssessmentResponse.deleteMany({ assessmentId: { $in: ownedAssessments } });
+  await User.deleteOne({ _id: userId });
+  res.status(204).send();
+}));
+
 router.post(
   '/logout',
   requireAuth,

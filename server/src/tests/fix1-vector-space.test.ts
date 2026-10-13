@@ -8,7 +8,7 @@ import {
   EMBEDDING_DIM,
 } from '../utils/embedding.js';
 import { Unit } from '../models/Unit.js';
-import { retrieveUnits, isGrounded } from '../services/rag.js';
+import { answerQuestion, retrieveUnits, isGrounded } from '../services/rag.js';
 import { __setActiveSpace, activeSpace, groundingThresholds } from '../utils/vectorSpace.js';
 import mongoose from 'mongoose';
 import { getAIProvider } from '../ai/provider.js';
@@ -213,7 +213,7 @@ describe('grounding thresholds are provider-specific', () => {
     }
   });
 
-  test('uncalibrated gemini fails CLOSED rather than using the local threshold', () => {
+  test('uncalibrated gemini is model-judged without using the local threshold', () => {
     const saved = { ...process.env };
     try {
       process.env.GROUNDING_SIMILARITY_THRESHOLD_LOCAL = '0.17';
@@ -223,14 +223,48 @@ describe('grounding thresholds are provider-specific', () => {
       __setActiveSpace({ provider: 'gemini', dim: 768 });
 
       const t = groundingThresholds();
-      assert.equal(
-        t.similarity,
-        Number.POSITIVE_INFINITY,
-        'with no Gemini calibration the gate must not admit on similarity alone'
-      );
-      assert.equal(isGrounded(0, 0), false, 'zero similarity and zero overlap must never pass an uncalibrated Gemini gate');
+      assert.equal(t.calibrated, false, 'missing Gemini calibration must be explicit');
+      assert.equal(t.similarity, 0, 'uncalibrated Gemini must not use an Infinity sentinel');
+      assert.equal(isGrounded(0, 0), true, 'candidate excerpts are passed to the model for its own relevance judgment');
       __setActiveSpace(null);
     } finally {
+      process.env = saved;
+      __setActiveSpace(null);
+    }
+  });
+
+  test('uncalibrated Gemini matching excerpts reach groundedAnswer', async () => {
+    const saved = { ...process.env };
+    const dbName = `studymind_uncalibrated_${Date.now()}`;
+    const ai = getAIProvider();
+    const originalEmbed = ai.embed.bind(ai);
+    const originalGrounded = ai.groundedAnswer.bind(ai);
+    try {
+      delete process.env.GROUNDING_SIMILARITY_THRESHOLD_GEMINI;
+      delete process.env.GROUNDING_LEXICAL_THRESHOLD_GEMINI;
+      delete process.env.GROUNDING_SIMILARITY_THRESHOLD;
+      delete process.env.GROUNDING_SIMILARITY_THRESHOLD_LEGACY;
+      __setActiveSpace({ provider: 'gemini', dim: FAKE_DIM });
+      await mongoose.connect(`mongodb://127.0.0.1:27017/${dbName}`);
+      const { User } = await import('../models/User.js');
+      const { Source } = await import('../models/Source.js');
+      const u = await User.create({ name: 'Model Judged', email: `${dbName}@test.local`, phone: '+919000000098', passwordHash: 'x' });
+      const source = await Source.create({ userId: u._id, type: 'pdf', title: 'Excerpt Test', fileUrl: 'test.pdf', originalName: 'test.pdf', status: 'ready' });
+      await Unit.create({ userId: u._id, sourceId: source._id, kind: 'text', text: 'Section 2 explains virtual memory address translation and page tables.', location: { page: 2 }, embedding: fakeEmbed('Section 2 explains virtual memory address translation and page tables.'), embeddingProvider: 'gemini', embeddingDim: FAKE_DIM });
+      (ai as any).embed = async (texts: string[]) => texts.map(fakeEmbed);
+      let groundedCalled = false;
+      let capturedHistory: unknown;
+      (ai as any).groundedAnswer = async (opts: any) => { groundedCalled = true; capturedHistory = opts.history; return { answer: 'Page tables translate addresses.', citedUnitIds: [opts.excerpts[0].unitId], groundingStatus: 'full', outsideKnowledge: null }; };
+      const history = [{ role: 'user' as const, content: 'Explain virtual memory.' }, { role: 'assistant' as const, content: 'It maps addresses.' }];
+      const result = await answerQuestion(String(u._id), 'What does virtual memory address translation do?', { history });
+      assert.deepEqual(capturedHistory, history, 'conversation history must reach the grounded prompt');
+      assert.equal(groundedCalled, true, 'uncalibrated Gemini candidate must reach groundedAnswer');
+      assert.equal(result.citations.length, 1, 'citation audit should preserve the real retrieved citation');
+      assert.equal(result.audit.stripped, 0);
+    } finally {
+      (ai as any).embed = originalEmbed;
+      (ai as any).groundedAnswer = originalGrounded;
+      if (mongoose.connection.readyState) { await mongoose.connection.dropDatabase(); await mongoose.disconnect(); }
       process.env = saved;
       __setActiveSpace(null);
     }

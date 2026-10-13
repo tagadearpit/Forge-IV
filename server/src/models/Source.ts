@@ -5,6 +5,8 @@ export type SourceType = (typeof SOURCE_TYPES)[number];
 
 export const SOURCE_STATUSES = ['queued', 'extracting', 'indexing', 'ready', 'failed'] as const;
 export type SourceStatus = (typeof SOURCE_STATUSES)[number];
+export const EMBEDDING_STATUSES = ['queued', 'pending', 'ready', 'failed'] as const;
+export type EmbeddingStatus = (typeof EMBEDDING_STATUSES)[number];
 
 const SourceSchema = new Schema(
   {
@@ -16,6 +18,11 @@ const SourceSchema = new Schema(
     mimeType: { type: String, default: '' },
     status: { type: String, enum: SOURCE_STATUSES, default: 'queued', index: true },
     statusReason: { type: String, default: null },
+    embeddingStatus: { type: String, enum: EMBEDDING_STATUSES, default: 'queued', index: true },
+    outline: {
+      type: [{ title: { type: String, required: true }, page: { type: Number, default: null }, slide: { type: Number, default: null }, level: { type: Number, default: 1 } }],
+      default: [],
+    },
     pageCount: { type: Number, default: null },
     durationSec: { type: Number, default: null },
     sizeBytes: { type: Number, default: null },

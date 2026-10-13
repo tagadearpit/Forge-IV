@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { RefreshCw, Volume2, ChevronLeft, ChevronRight, BookOpen } from 'lucide-react';
+import { RefreshCw, Volume2, ChevronLeft, ChevronRight, BookOpen, Download } from 'lucide-react';
 import { api } from '@/lib/api';
 import { EmptyState, ErrorState, Skeleton, Button } from '@/components/ui';
 import { cn } from '@/lib/utils';
@@ -14,6 +14,7 @@ export default function RevisionPage() {
   const [loading, setLoading] = useState(true);
   const [idx, setIdx] = useState(0);
   const [flipped, setFlipped] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
 
   useEffect(() => {
     api.topics()
@@ -32,6 +33,14 @@ export default function RevisionPage() {
   if (!rev) return <EmptyState icon={<SafeImage src="/images/empty-notes.webp" alt="" width={1024} height={1024} sizes="(max-width: 640px) 70vw, 280px" wrapperClassName="mx-auto w-full max-w-[280px] rounded-2xl" className="h-full w-full object-cover" />} title="No revision cards yet" description="Add a source and I’ll turn its key ideas into study prompts." />;
 
   const card = rev.flashcards?.[idx];
+  const exportPdf = async () => {
+    setPdfBusy(true);
+    try {
+      const content = [`Topic: ${rev.topic?.name ?? 'Revision'}`, '', 'Summary:', ...(rev.summarySlides ?? []).map((s: any) => `${s.index}. ${s.text}`), '', 'Revision cards:', ...(rev.flashcards ?? []).map((c: any, i: number) => `${i + 1}. ${c.front}\nAnswer: ${c.back}${c.citation ? `\nSource: ${c.citation}` : ''}`)].join('\n');
+      const blob = await api.generatePdf({ prompt: `STUDYMIND_EXPORT:Revision summary\n${content}` });
+      const href = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = href; a.download = 'studymind-revision-summary.pdf'; a.click(); URL.revokeObjectURL(href);
+    } finally { setPdfBusy(false); }
+  };
 
   return (
     <div className="space-y-6">
@@ -106,6 +115,9 @@ export default function RevisionPage() {
           </ul>
         </section>
       )}
+      <Button variant="secondary" onClick={() => void exportPdf()} loading={pdfBusy}>
+        <Download className="h-4 w-4" aria-hidden /> Download revision summary as PDF
+      </Button>
     </div>
   );
 }

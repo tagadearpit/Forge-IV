@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import {
-  Play, CheckCircle2, XCircle, Clock, Target, AlertTriangle, Loader2, Trophy, ArrowRight,
+  Play, CheckCircle2, XCircle, Clock, Target, AlertTriangle, Loader2, Trophy, ArrowRight, Download,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Button, EmptyState, Alert, useToast, Skeleton } from '@/components/ui';
@@ -338,6 +338,15 @@ function TakingView({
 /* ----------------------------- report ---------------------------------- */
 
 function ReportView({ report, onRestart }: { report: any; onRestart: () => void }) {
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const exportPdf = async () => {
+    setPdfBusy(true);
+    try {
+      const details = [`Score: ${Math.round((report.score ?? 0) * 100)}%`, `Correct: ${report.correct} of ${report.total}`, `Weak topics: ${(report.weakTopics ?? []).join(', ') || 'None'}`, `Topic breakdown: ${(report.topicBreakdown ?? []).map((t: any) => `${t.topicName}: ${t.correct}/${t.total}`).join('; ') || 'Not available'}`, `Likely misconceptions: ${(report.misconceptions ?? []).map((m: any) => `${m.label} (${m.count})`).join('; ') || 'None'}`].join('\n');
+      const blob = await api.generatePdf({ prompt: `STUDYMIND_EXPORT:Quiz report\n${details}` });
+      const href = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = href; a.download = 'studymind-quiz-report.pdf'; a.click(); URL.revokeObjectURL(href);
+    } finally { setPdfBusy(false); }
+  };
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div className="card p-8 text-center">
@@ -420,6 +429,9 @@ function ReportView({ report, onRestart }: { report: any; onRestart: () => void 
       )}
 
       <div className="flex flex-wrap gap-3">
+        <Button variant="secondary" onClick={() => void exportPdf()} loading={pdfBusy}>
+          <Download className="h-4 w-4" aria-hidden /> Download as PDF
+        </Button>
         <Button onClick={onRestart}>Take another</Button>
         <Button variant="secondary" onClick={() => (window.location.href = '/study-plan')}>
           Schedule revision

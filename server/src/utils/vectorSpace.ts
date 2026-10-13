@@ -55,6 +55,7 @@ export function __setActiveSpace(space: VectorSpace | null): void {
 export function groundingThresholds(): {
   similarity: number;
   lexical: number;
+  calibrated: boolean;
   /** True when the value came from the legacy fallback rather than the per-provider setting. */
   fromLegacyFallback: boolean;
 } {
@@ -66,19 +67,18 @@ export function groundingThresholds(): {
     const sim = numOrNull(process.env.GROUNDING_SIMILARITY_THRESHOLD_GEMINI);
     const lex = numOrNull(process.env.GROUNDING_LEXICAL_THRESHOLD_GEMINI);
     if (sim === null) {
-      // No Gemini calibration has been run. The local value is NOT a valid
-      // substitute: the two spaces have different score distributions. Make
-      // both branches fail closed rather than allowing a zero lexical score.
-      return { similarity: Number.POSITIVE_INFINITY, lexical: Number.POSITIVE_INFINITY, fromLegacyFallback: false };
+      // Never borrow local thresholds for Gemini. Until calibration exists,
+      // skip the numeric gate and let groundedAnswer judge the retrieved text.
+      return { similarity: 0, lexical: 0, calibrated: false, fromLegacyFallback: false };
     }
-    return { similarity: sim, lexical: lex ?? 0, fromLegacyFallback: false };
+    return { similarity: sim, lexical: lex ?? 0, calibrated: true, fromLegacyFallback: false };
   }
 
   const sim = numOrNull(process.env.GROUNDING_SIMILARITY_THRESHOLD_LOCAL);
   const lex = numOrNull(process.env.GROUNDING_LEXICAL_THRESHOLD_LOCAL);
-  if (sim !== null) return { similarity: sim, lexical: lex ?? 0.55, fromLegacyFallback: false };
-  if (legacy !== null) return { similarity: legacy, lexical: 0.55, fromLegacyFallback: true };
-  return { similarity: 0.17, lexical: 0.55, fromLegacyFallback: false };
+  if (sim !== null) return { similarity: sim, lexical: lex ?? 0.55, calibrated: true, fromLegacyFallback: false };
+  if (legacy !== null) return { similarity: legacy, lexical: 0.55, calibrated: true, fromLegacyFallback: true };
+  return { similarity: 0.17, lexical: 0.55, calibrated: true, fromLegacyFallback: false };
 }
 
 /** Calibration status, surfaced in /api/health and the eval results. */
@@ -89,9 +89,10 @@ export function groundingCalibrationStatus(): Record<string, unknown> {
     activeSpace: activeSpace(),
     localCalibrated: numOrNull(process.env.GROUNDING_SIMILARITY_THRESHOLD_LOCAL) !== null || legacy() !== null,
     geminiCalibrated: geminiSet,
+    groundingMode: activeSpace().provider === 'gemini' && !geminiSet ? 'model-judged' : 'numeric-gate',
     note: geminiSet
       ? 'Gemini thresholds calibrated via scripts/calibrate_grounding.ts'
-      : 'Gemini thresholds NOT calibrated. Run scripts/calibrate_grounding.ts with GEMINI_API_KEY set.',
+      : 'Gemini thresholds not calibrated; numeric gate is skipped and the model judges excerpt relevance.',
   };
 }
 

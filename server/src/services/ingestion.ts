@@ -1,4 +1,5 @@
 import { Source, SourceStatus } from '../models/Source.js';
+import { env } from '../config/env.js';
 import { Unit } from '../models/Unit.js';
 import { Topic } from '../models/Topic.js';
 import { getAIProvider } from '../ai/provider.js';
@@ -143,6 +144,7 @@ export async function ingestSource(
       );
     }
 
+    source.outline = buildSourceOutline(source.type, rawUnits) as never;
     if (pageCount !== null) source.pageCount = pageCount;
     if (durationSec !== null) source.durationSec = durationSec;
 
@@ -174,25 +176,14 @@ export async function ingestSource(
 
     /* ---------------------- 3. EMBED ---------------------- */
     await setStatus('indexing', 0.6);
-    // Embedding space is recorded per unit. If the provider call fails we fall
-    // back to local vectors — but we LABEL those units 'local' so retrieval can
-    // exclude them from a Gemini query instead of comparing incompatible spaces.
-    let space = activeSpace();
-    let vectors: number[][] = [];
-    try {
-      vectors = await ai.embed(chunked.map((c) => c.text));
-      const first = vectors.find((v) => Array.isArray(v) && v.length);
-      if (first?.length) space = { provider: space.provider, dim: first.length };
-    } catch (err) {
-      // Never lose the source because the embedding service blipped.
-      console.warn('[ingest] batch embed failed, falling back to local vectors', (err as Error).message);
-      space = { provider: 'local', dim: 0 };
-    }
-    if (!vectors.length || vectors.length !== chunked.length || !space.dim) {
-      vectors = chunked.map((c) => localEmbed(c.text));
-      space = { provider: 'local', dim: vectors[0]?.length ?? 0 };
-    }
-    console.log(`[ingest] ${chunked.length} units -> ${space.provider}/${space.dim}-dim space`);
+    source.embeddingStatus = 'pending';
+    await source.save();
+    const vectors = await embedWithBackoff(ai, chunked.map((c) => c.text));
+    const space = activeSpace();
+    const first = vectors?.find((v) => Array.isArray(v) && v.length);
+    const embeddingReady = Boolean(vectors && vectors.length === chunked.length && first?.length);
+    const embeddingDim = embeddingReady ? first!.length : null;
+    console.log(`[ingest] ${chunked.length} units -> ${embeddingReady ? `${space.provider}/${embeddingDim}-dim` : 'embedding pending (will retry)'}`);
 
     // Clear any previous units so re-ingestion does not duplicate content.
     await Unit.deleteMany({ sourceId: source._id });
@@ -205,9 +196,9 @@ export async function ingestSource(
       location: c.raw.location,
       figureDescription: c.raw.figureDescription ?? null,
       speakerNotes: c.raw.speakerNotes ?? null,
-      embedding: vectors[i],
-      embeddingProvider: space.provider,
-      embeddingDim: vectors[i]?.length ?? space.dim,
+      embedding: embeddingReady ? vectors![i] : undefined,
+      embeddingProvider: embeddingReady ? space.provider : null,
+      embeddingDim: embeddingReady ? vectors![i].length : null,
       topicIds: [],
       charStart: c.charStart,
       charEnd: c.charEnd,
@@ -230,6 +221,7 @@ export async function ingestSource(
     source.progress = 1;
     source.status = 'ready';
     source.statusReason = null;
+    source.embeddingStatus = embeddingReady ? 'ready' : 'pending';
     source.stats = {
       unitsTotal: unitsCreated,
       unitsFailed: unitFailures,
@@ -238,6 +230,7 @@ export async function ingestSource(
     };
     source.topicIds = await Unit.distinct('topicIds', { sourceId: source._id });
     await source.save();
+    if (!embeddingReady) scheduleReembedding(sourceId, userId, 0, 2_000);
 
     await logEvent(userId, 'source_ready', null, null, 'ingestion', { sourceId: String(source._id) });
 
@@ -254,6 +247,7 @@ export async function ingestSource(
     console.error('[ingest]', err);
     source.status = 'failed';
     source.statusReason = message;
+    source.embeddingStatus = 'failed';
     source.progress = 1;
     await source.save();
     throw new ExtractionError(message, 'ingest');
@@ -339,6 +333,87 @@ export async function buildTopicsForSource(
 
 /* ------------------------------ helpers -------------------------------- */
 
+async function embedWithBackoff(
+  ai: ReturnType<typeof getAIProvider>,
+  texts: string[],
+  attempts = 3
+): Promise<number[][] | null> {
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      const vectors = await ai.embed(texts);
+      const dim = vectors?.[0]?.length;
+      if (!vectors || vectors.length !== texts.length || !dim || vectors.some((v) => !Array.isArray(v) || v.length !== dim || v.some((n) => !Number.isFinite(n)))) {
+        throw new Error('Embedding provider returned an incomplete or inconsistent batch.');
+      }
+      return vectors;
+    } catch (err) {
+      console.warn(`[ingest] embedding attempt ${attempt + 1}/${attempts} failed`, (err as Error).message);
+      if (attempt + 1 < attempts) await new Promise((resolve) => setTimeout(resolve, 300 * 2 ** attempt));
+    }
+  }
+  return null;
+}
+
+const reembedding = new Set<string>();
+
+function scheduleReembedding(sourceId: string, userId: string, attempt: number, delayMs: number) {
+  const timer = setTimeout(() => void reembedSource(sourceId, userId, attempt), delayMs);
+  timer.unref?.();
+}
+
+async function reembedSource(sourceId: string, userId: string, attempt: number): Promise<void> {
+  if (reembedding.has(sourceId)) return;
+  reembedding.add(sourceId);
+  try {
+    const source = await Source.findOne({ _id: sourceId, userId, status: 'ready' });
+    if (!source) return;
+    const units = await Unit.find({ sourceId, userId }).select('_id text').lean();
+    if (!units.length) return;
+    const vectors = await embedWithBackoff(getAIProvider(), units.map((unit: any) => String(unit.text)));
+    if (!vectors) {
+      source.embeddingStatus = 'pending';
+      await source.save();
+      if (attempt < 8) scheduleReembedding(sourceId, userId, attempt + 1, Math.min(60_000, 2_000 * 2 ** attempt));
+      return;
+    }
+    const provider = activeSpace().provider;
+    await Unit.bulkWrite(units.map((unit: any, index: number) => ({
+      updateOne: {
+        filter: { _id: unit._id, sourceId, userId },
+        update: { $set: { embedding: vectors[index], embeddingProvider: provider, embeddingDim: vectors[index].length } },
+      },
+    })) as never, { ordered: false });
+    source.embeddingStatus = 'ready';
+    await source.save();
+    console.log(`[ingest] re-embedded source ${sourceId} into ${provider}/${vectors[0].length}-dim space`);
+  } catch (err) {
+    console.warn('[ingest] background re-embedding failed', (err as Error).message);
+    if (attempt < 8) scheduleReembedding(sourceId, userId, attempt + 1, Math.min(60_000, 2_000 * 2 ** attempt));
+  } finally {
+    reembedding.delete(sourceId);
+  }
+}
+
+export async function resumeIngestionJobs(): Promise<void> {
+  const fs = await import('node:fs/promises');
+  const path = await import('node:path');
+  const stalled = await Source.find({ status: { $in: ['queued', 'extracting', 'indexing'] } })
+    .select('_id userId fileUrl mimeType')
+    .lean();
+  for (const source of stalled as any[]) {
+    const filePath = path.join(env.UPLOAD_DIR, path.basename(String(source.fileUrl)));
+    if (!(await fs.stat(filePath).then(() => true).catch(() => false))) {
+      console.warn(`[ingest] cannot resume source ${source._id}: original upload is missing`);
+      continue;
+    }
+    setImmediate(() => void ingestSource(String(source._id), String(source.userId), filePath, String(source.mimeType ?? '')).catch((err) => console.error('[ingest:resume]', err.message)));
+  }
+  const pendingEmbeddings = await Source.find({ status: 'ready', embeddingStatus: { $in: ['pending', 'queued'] } })
+    .select('_id userId')
+    .lean();
+  for (const source of pendingEmbeddings as any[]) scheduleReembedding(String(source._id), String(source.userId), 0, 1_000);
+}
+
 async function fsReadBase64(p: string): Promise<{ base64: string }> {
   const fs = await import('node:fs/promises');
   const buf = await fs.readFile(p);
@@ -348,4 +423,32 @@ async function fsReadBase64(p: string): Promise<{ base64: string }> {
 async function fsReadUtf8(p: string): Promise<string> {
   const fs = await import('node:fs/promises');
   return fs.readFile(p, 'utf8');
+}
+
+function buildSourceOutline(sourceType: string, units: RawUnit[]) {
+  const outline: Array<{ title: string; page: number | null; slide: number | null; level: number }> = [];
+  const seen = new Set<string>();
+  for (const unit of units) {
+    let title = unit.heading?.trim() ?? '';
+    if (sourceType === 'pdf') {
+      const candidates = unit.text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      title = candidates.find((line) =>
+        /^(?:chapter|section|unit)\s+\d+\b/i.test(line) ||
+        /^\d+(?:\.\d+)*[.)]?\s+\S/.test(line) ||
+        (line.length >= 4 && line.length <= 72 && /^[A-Z0-9][A-Z0-9 &,:;()/'-]+$/.test(line) && /[A-Z]/.test(line))
+      ) ?? '';
+    }
+    if (!title || title.length > 160) continue;
+    const key = title.toLowerCase().replace(/\s+/g, ' ');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const numbered = /^(?:(?:chapter|section|unit)\s+)?(\d+(?:\.\d+)*)/i.exec(title);
+    outline.push({
+      title,
+      page: unit.location.page ?? null,
+      slide: unit.location.slide ?? null,
+      level: numbered ? numbered[1].split('.').length : 1,
+    });
+  }
+  return outline;
 }

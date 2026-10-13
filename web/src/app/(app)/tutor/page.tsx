@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
-  Send, BookOpen, AlertTriangle, Mic, Volume2, Globe, Sparkles, Loader2, ExternalLink,
+  Send, BookOpen, AlertTriangle, Mic, Volume2, Globe, Sparkles, Loader2, ExternalLink, Download,
 } from 'lucide-react';
 import { api, type Citation, type TutorAnswer } from '@/lib/api';
 import { useToast, Button } from '@/components/ui';
@@ -54,10 +54,12 @@ function getSpeechRecognition(): (new () => SpeechRecognitionLike) | null {
 export default function TutorPage() {
   const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
+  const [threadId, setThreadId] = useState<string | null>(null);
+  const [threads, setThreads] = useState<Array<{ id: string; title: string }>>([]);
   const [question, setQuestion] = useState('');
   const [language, setLanguage] = useState<'en' | 'hi'>('en');
   useEffect(() => { if (user?.prefs?.language === 'hi') setLanguage('hi'); }, [user]);
-  const [scope, setScope] = useState<{ label: string; sourceIds?: string[]; topicIds?: string[] }>({ label: 'All sources' });
+  const [scope, setScope] = useState<{ label: string; sourceIds?: string[]; topicIds?: string[]; sectionTitle?: string }>({ label: 'All sources' });
   const [sources, setSources] = useState<any[]>([]);
   const [asking, setAsking] = useState(false);
   const [openCitation, setOpenCitation] = useState<Citation | null>(null);
@@ -137,12 +139,34 @@ export default function TutorPage() {
   useEffect(() => () => recognitionRef.current?.abort(), []);
 
   useEffect(() => {
-    api.sources().then((r) => setSources(r.sources.filter((s) => s.status === 'ready'))).catch(() => {});
+    api.sources().then((r) => setSources(r.sources)).catch(() => {});
+    api.chatHistory().then(async ({ threads: rows }) => {
+      setThreads(rows);
+      const latest = rows[0];
+      if (!latest) return;
+      const data = await api.chatThread(latest.id);
+      setThreadId(latest.id);
+      const sc = data.thread?.scope ?? {};
+      const sourceIds = (sc.sourceIds ?? []).map(String);
+      const topicIds = (sc.topicIds ?? []).map(String);
+      setScope(sourceIds.length ? { label: `source:${sourceIds[0]}`, sourceIds, sectionTitle: sc.sectionTitle ?? undefined } : topicIds.length ? { label: `topic:${topicIds[0]}`, topicIds } : { label: 'All sources' });
+      setMessages((data.messages ?? []).map((m: any) => ({
+        id: m.id, role: m.role, content: m.content,
+        ...(m.role === 'assistant' ? { result: { answer: m.content, citations: m.citations ?? [], groundingStatus: m.groundingStatus ?? 'partial', outsideKnowledge: m.outsideKnowledge ?? null, language: 'en', topSimilarity: 0, lexicalOverlap: 0, audit: { citedRequested: 0, citedVerified: 0, stripped: 0, declined: false }, unsearchableCount: 0, usingSource: null, messageId: m.id } as TutorAnswer } : {}),
+      })));
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, asking]);
+
+  useEffect(() => {
+    if (!scope.sectionTitle || !scope.sourceIds?.[0] || !scope.label.startsWith('source:')) return;
+    const src = sources.find((s) => s.id === scope.sourceIds![0]);
+    const index = src?.outline?.findIndex((e: any) => e.title === scope.sectionTitle) ?? -1;
+    if (index >= 0) setScope((current) => ({ ...current, label: `section:${scope.sourceIds![0]}:${index}` }));
+  }, [sources, scope.sectionTitle, scope.sourceIds, scope.label]);
 
   const ask = useCallback(
     async (text: string) => {
@@ -157,15 +181,20 @@ export default function TutorPage() {
       try {
         const result = await api.ask({
           question: q,
+          ...(threadId ? { threadId } : {}),
           language,
-          scope: {
+          ...((scope.sourceIds || scope.topicIds || scope.sectionTitle || threadId) ? { scope: {
             ...(scope.sourceIds ? { sourceIds: scope.sourceIds } : {}),
             ...(scope.topicIds ? { topicIds: scope.topicIds } : {}),
-          },
+            ...(scope.sectionTitle ? { sectionTitle: scope.sectionTitle } : {}),
+          } } : {}),
         });
+        if (result.threadId) setThreadId(result.threadId);
+        if (result.usingSource && !scope.sectionTitle) setScope((current) => ({ ...current, label: `source:${result.usingSource!.id}`, sourceIds: [result.usingSource!.id], topicIds: undefined }));
+        if (result.threadId && !threads.some((t) => t.id === result.threadId)) setThreads((t) => [{ id: result.threadId!, title: q.slice(0, 80) }, ...t]);
         setMessages((m) => [
           ...m,
-          { id: `a${Date.now()}`, role: 'assistant', content: result.answer, result },
+          { id: result.messageId ?? `a${Date.now()}`, role: 'assistant', content: result.answer || result.outsideKnowledge || '', result },
         ]);
       } catch (err: any) {
         toast.push('error', err?.message ?? 'Could not reach the tutor.');
@@ -182,7 +211,7 @@ export default function TutorPage() {
         setAsking(false);
       }
     },
-    [asking, language, scope, toast]
+    [asking, language, scope, toast, threadId, threads]
   );
 
   const speak = (text: string) => {
@@ -203,10 +232,16 @@ export default function TutorPage() {
   };
 
   return (
-    <div className="flex h-[calc(100vh-8rem)] flex-col">
+    <div className="flex h-[calc(100vh-8rem)] gap-3">
+      <aside className="hidden w-56 shrink-0 flex-col gap-3 overflow-y-auto rounded-2xl border border-[color:rgb(var(--border))] bg-[color:rgb(var(--card))] p-3 md:flex">
+        <button type="button" className="btn-secondary w-full px-3 py-2 text-sm" onClick={() => { setThreadId(null); setMessages([]); setScope({ label: 'All sources' }); }}>New chat</button>
+        <h2 className="px-2 text-xs font-semibold uppercase tracking-wide text-muted">Recent chats</h2>
+        {threads.map((t) => <button key={t.id} type="button" className={cn('w-full truncate rounded-lg px-3 py-2 text-left text-sm', threadId === t.id ? 'bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300' : 'hover:bg-[color:rgb(var(--surface))]')} onClick={async () => { try { const data = await api.chatThread(t.id); setThreadId(t.id); const sc = data.thread?.scope ?? {}; const sourceIds = (sc.sourceIds ?? []).map(String); const topicIds = (sc.topicIds ?? []).map(String); setScope(sourceIds.length ? { label: `source:${sourceIds[0]}`, sourceIds, sectionTitle: sc.sectionTitle ?? undefined } : topicIds.length ? { label: `topic:${topicIds[0]}`, topicIds } : { label: 'All sources' }); setMessages((data.messages ?? []).map((m: any) => ({ id: m.id, role: m.role, content: m.content, ...(m.role === 'assistant' ? { result: { answer: m.content, citations: m.citations ?? [], groundingStatus: m.groundingStatus ?? 'partial', outsideKnowledge: m.outsideKnowledge ?? null, language: 'en', topSimilarity: 0, lexicalOverlap: 0, audit: { citedRequested: 0, citedVerified: 0, stripped: 0, declined: false }, unsearchableCount: 0, usingSource: null, messageId: m.id } as TutorAnswer } : {}) }))); } catch {} }}>{t.title}</button>)}
+      </aside>
+      <div className="flex min-w-0 flex-1 flex-col">
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <h1 className="mr-auto text-xl font-bold tracking-tight">Tutor</h1>
-
+        <button type="button" className="btn-secondary px-3 py-1.5 text-sm md:hidden" onClick={() => { setThreadId(null); setMessages([]); setScope({ label: 'All sources' }); }}>New chat</button>
         {/* Scope selector */}
         <label className="sr-only" htmlFor="scope">Scope</label>
         <select
@@ -215,7 +250,12 @@ export default function TutorPage() {
           onChange={(e) => {
             const v = e.target.value;
             if (v === 'All sources') setScope({ label: v });
-            else if (v.startsWith('source:')) {
+            else if (v.startsWith('section:')) {
+              const [, id, index] = v.split(':');
+              const src = sources.find((item) => item.id === id);
+              const sectionTitle = src?.outline?.[Number(index)]?.title;
+              setScope({ label: v, sourceIds: [id], sectionTitle });
+            } else if (v.startsWith('source:')) {
               const id = v.slice(7);
               setScope({ label: v, sourceIds: [id] });
             } else {
@@ -227,10 +267,13 @@ export default function TutorPage() {
         >
           <option value="All sources">All sources</option>
           {sources.map((s) => (
-            <option key={s.id} value={`source:${s.id}`}>
-              Source: {s.title}
+            <option key={s.id} value={`source:${s.id}`} disabled={s.status !== 'ready'}>
+              {s.title} · {s.status}{s.embeddingStatus === 'pending' ? ' · embeddings pending' : ''}
             </option>
           ))}
+          {sources.filter((s) => s.status === 'ready').flatMap((s) => (s.outline ?? []).map((entry: any, i: number) => (
+            <option key={`${s.id}-section-${i}`} value={`section:${s.id}:${i}`}>Section: {s.title} · {entry.title}</option>
+          )))}
         </select>
 
         {/* Language toggle */}
@@ -250,7 +293,7 @@ export default function TutorPage() {
           ))}
         </div>
       </div>
-
+      {scope.sourceIds?.length === 1 && (() => { const selected = sources.find((s) => s.id === scope.sourceIds![0]); return selected ? <div className="mb-2 flex flex-wrap gap-2 text-xs"><span className="chip bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300">Using: {selected.title}</span>{selected.unitCount === 0 && <span className="chip bg-amber-100 text-amber-800">This selected source has zero indexed units.</span>}{selected.embeddingStatus === 'pending' && <span className="chip bg-amber-100 text-amber-800">Some parts may not be searchable yet.</span>}</div> : null; })()}
       {/* Transcript */}
       <div className="flex-1 space-y-5 overflow-y-auto rounded-2xl border border-[color:rgb(var(--border))] bg-[color:rgb(var(--card))] p-5">
         {messages.length === 0 && (
@@ -289,7 +332,7 @@ export default function TutorPage() {
               {!m.result ? (
                 <p className="text-sm text-muted">{m.content}</p>
               ) : (
-                <AnswerBlock result={m.result} onCitation={setOpenCitation} onSpeak={speak} />
+                <AnswerBlock result={m.result} threadId={threadId ?? undefined} onCitation={setOpenCitation} onSpeak={speak} />
               )}
             </div>
           )
@@ -407,6 +450,7 @@ export default function TutorPage() {
           </aside>
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -422,13 +466,24 @@ function Row({ label, value, mono }: { label: string; value: string; mono?: bool
 
 function AnswerBlock({
   result,
+  threadId,
   onCitation,
   onSpeak,
 }: {
   result: TutorAnswer;
+  threadId?: string;
   onCitation: (c: Citation) => void;
   onSpeak: (text: string) => void;
 }) {
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfError, setPdfError] = useState('');
+  const downloadPdf = async () => {
+    setPdfBusy(true); setPdfError('');
+    try {
+      const blob = await api.generatePdf(result.messageId ? { messageId: result.messageId } : threadId ? { threadId } : { prompt: result.answer });
+      const href = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = href; a.download = 'studymind-tutor-report.pdf'; a.click(); URL.revokeObjectURL(href);
+    } catch { setPdfError('PDF download failed. Please try again.'); } finally { setPdfBusy(false); }
+  };
   const outside = result.groundingStatus === 'outside_material';
 
   const badge =
@@ -449,6 +504,8 @@ function AnswerBlock({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <span className={cn('chip', badge)}>{label}</span>
+        {result.usingSource && <span className="chip bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300">Using: {result.usingSource.title}</span>}
+        {result.unsearchableCount ? <span className="chip bg-amber-100 text-amber-800">{result.unsearchableCount} parts of this document aren’t searchable yet</span> : null}
         {result.audit.stripped > 0 && (
           <span
             className="chip bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300"
@@ -464,7 +521,11 @@ function AnswerBlock({
         >
           <Volume2 className="h-3 w-3" aria-hidden /> Read aloud
         </button>
+        <button type="button" onClick={() => void downloadPdf()} disabled={pdfBusy} className="chip border border-[color:rgb(var(--border))] hover:bg-[color:rgb(var(--surface))]" aria-label="Download answer as PDF">
+          <Download className="h-3 w-3" aria-hidden /> {pdfBusy ? 'Preparing PDF…' : 'Download as PDF'}
+        </button>
       </div>
+      {pdfError && <p role="alert" className="text-xs text-red-600">{pdfError}</p>}
 
       {/* Grounded / outside split */}
       {outside ? (

@@ -13,6 +13,7 @@ export interface RawUnit {
   location: { page?: number; slide?: number; startSec?: number; endSec?: number };
   figureDescription?: string;
   speakerNotes?: string;
+  heading?: string;
 }
 
 export class ExtractionError extends Error {
@@ -171,12 +172,13 @@ export async function extractPptx(filePath: string): Promise<{ units: RawUnit[];
     const slideNo = slideNumber(slideFile);
     const xml = await zip.files[slideFile].async('string');
 
-    // <a:t> runs hold the visible text.
-    const body = [...xml.matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)]
-      .map((m) => decodeXml(m[1]))
-      .join(' ')
-      .replace(/\s+/g, ' ')
-      .trim();
+    // <a:t> runs hold the visible text. The first short run is commonly the
+    // slide title and is retained for the source outline.
+    const textRuns = [...xml.matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)]
+      .map((m) => decodeXml(m[1]).replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+    const body = textRuns.join(' ').replace(/\s+/g, ' ').trim();
+    const heading = textRuns.find((run) => run.length <= 160) ?? textRuns[0];
 
     const notesFile = zip.files[`ppt/notesSlides/notesSlide${slideNo}.xml`];
     let notes: string | null = null;
@@ -201,6 +203,7 @@ export async function extractPptx(filePath: string): Promise<{ units: RawUnit[];
         text: combined.trim(),
         location: { slide: slideNo },
         speakerNotes: notes ?? undefined,
+        heading: heading ?? undefined,
       });
     }
   }
