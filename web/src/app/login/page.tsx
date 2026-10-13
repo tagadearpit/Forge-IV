@@ -68,6 +68,7 @@ export default function LoginPage() {
     <SplitLayout
       headline="Welcome back to your study companion."
       sub="Pick up where you left off. Your topics, mastery and sources are waiting."
+      artSrc="/images/login.webp"
       footer={
         <>
           Don&apos;t have an account?{' '}

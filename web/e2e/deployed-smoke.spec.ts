@@ -58,19 +58,47 @@ test.describe('deployed StudyMind smoke checks', () => {
     await clickVisibleLinks(page, '/register');
   });
 
-  test('hero stays within 375px and 1280px viewports', async ({ page }) => {
-    for (const width of [375, 1280]) {
+  test('landing layout is stable and has no horizontal overflow at 375, 768 and 1280px', async ({ page }) => {
+    for (const width of [375, 768, 1280]) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto('/');
-      const sizing = await page.evaluate(() => ({
+      const before = await page.evaluate(() => ({
         viewport: document.documentElement.clientWidth,
         document: document.documentElement.scrollWidth,
-        hero: document.querySelector('h1')?.getBoundingClientRect(),
+        hero: document.querySelector('h1')?.getBoundingClientRect().toJSON(),
+        images: [...document.images].map((img) => {
+          const rect = img.getBoundingClientRect();
+          return { src: img.currentSrc, x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+        }),
       }));
-      expect(sizing.document).toBeLessThanOrEqual(width);
-      expect(sizing.hero?.left ?? -1).toBeGreaterThanOrEqual(0);
-      expect((sizing.hero?.right ?? width + 1)).toBeLessThanOrEqual(width);
-      expect(sizing.viewport).toBe(width);
+      await page.evaluate(async () => {
+        document.querySelectorAll('img').forEach((img) => { img.loading = 'eager'; });
+        await Promise.all([
+          document.fonts.ready,
+          ...[...document.images].map((img) => img.decode().catch(() => undefined)),
+        ]);
+      });
+      const after = await page.evaluate(() => ({
+        viewport: document.documentElement.clientWidth,
+        document: document.documentElement.scrollWidth,
+        hero: document.querySelector('h1')?.getBoundingClientRect().toJSON(),
+        images: [...document.images].map((img) => {
+          const rect = img.getBoundingClientRect();
+          return { src: img.currentSrc, x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+        }),
+      }));
+
+      expect(before.viewport).toBe(width);
+      expect(before.document).toBeLessThanOrEqual(width);
+      expect(after.document).toBeLessThanOrEqual(width);
+      expect(before.hero?.x ?? -1).toBeGreaterThanOrEqual(0);
+      expect((before.hero?.right ?? width + 1)).toBeLessThanOrEqual(width);
+      expect(Math.abs((after.hero?.y ?? 0) - (before.hero?.y ?? 0))).toBeLessThanOrEqual(8);
+      expect(after.images.length).toBe(before.images.length);
+      for (let i = 0; i < before.images.length; i++) {
+        expect(Math.abs(after.images[i].height - before.images[i].height)).toBeLessThanOrEqual(2);
+        expect(Math.abs(after.images[i].width - before.images[i].width)).toBeLessThanOrEqual(2);
+      }
     }
   });
 
@@ -92,6 +120,34 @@ test.describe('deployed StudyMind smoke checks', () => {
         }
       }
     }
+
+    // Verify the main, non-destructive actions on each learning surface.
+    await page.goto('/dashboard');
+    await expect(page.getByRole('main')).toBeVisible();
+    await expect(page.getByRole('link', { name: /Upload material/i })).toBeVisible();
+    await expect(page.locator('main a[href="/tutor"]')).toBeVisible();
+    await expect(page.locator('main a[href="/assessments"]')).toBeVisible();
+
+    await page.goto('/tutor');
+    const tutorQuestion = page.getByRole('textbox', { name: 'Your question' });
+    await expect(tutorQuestion).toBeVisible();
+    const sendQuestion = page.getByRole('button', { name: 'Send question' });
+    await expect(sendQuestion).toBeDisabled();
+    await tutorQuestion.fill('Smoke check only; do not submit.');
+    await expect(sendQuestion).toBeEnabled();
+    await tutorQuestion.clear();
+
+    await page.goto('/assessments');
+    await expect(page.getByRole('button', { name: 'Generate assessment' })).toBeEnabled();
+
+    await page.goto('/revision');
+    await expect(page.getByRole('main')).toBeVisible();
+    const flipCard = page.locator('section.card button').first();
+    if (await flipCard.isVisible().catch(() => false)) {
+      await flipCard.click();
+      await expect(page.getByText('Answer', { exact: true })).toBeVisible();
+    }
+    await expect(page.locator('body')).not.toContainText(/spaced[- ]repetition|again\s*\/\s*hard\s*\/\s*good\s*\/\s*easy/i);
 
     await page.getByRole('button', { name: /Account menu for/i }).click();
     await expect(page.getByRole('menu')).toBeVisible();

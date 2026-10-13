@@ -193,3 +193,14 @@
 
 /* KaTeX for LaTeX in tutor answers and quiz explanations. */
 @import 'katex/dist/katex.min.css';
+
+@keyframes studymind-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-7px); }
+}
+
+.hero-float { animation: studymind-float 7s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-float { animation: none !important; }
+}

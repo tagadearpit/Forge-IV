@@ -26,12 +26,17 @@ export const metadata: Metadata = {
   title: 'StudyMind — your study buddy for cited answers and curious questions',
   description:
     'Upload lectures, textbooks and slides. Get source-cited answers, adaptive quizzes, and a mastery model that knows what you have actually learned.',
-  keywords: ['AI tutor', 'RAG', 'adaptive learning', 'study companion', 'spaced repetition'],
+  keywords: ['AI tutor', 'RAG', 'adaptive learning', 'study companion'],
   openGraph: {
     title: 'StudyMind — a study buddy for cited and general answers',
     description:
       'Answers grounded in your material cite the page, slide or timestamp. General-knowledge answers are clearly labelled and kept separate.',
     type: 'website',
+    images: [{ url: '/images/og.webp', width: 1200, height: 630, alt: 'StudyMind illustrations for source-based learning' }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    images: ['/images/og.webp'],
   },
 };
 

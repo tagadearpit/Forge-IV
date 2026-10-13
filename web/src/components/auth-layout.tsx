@@ -1,10 +1,10 @@
 'use client';
 
-import Image from 'next/image';
 import Link from 'next/link';
 import { useState, type ReactNode } from 'react';
 import { Quote, ShieldCheck, ListChecks, BarChart3 } from 'lucide-react';
 import { Logo } from './site-chrome';
+import { SafeImage } from './safe-image';
 
 const BENEFITS = [
   { icon: Quote, text: 'Source-cited answers that open the exact page' },
@@ -21,55 +21,43 @@ export function SplitLayout({
   sub,
   children,
   footer,
+  artSrc = '/images/login.webp',
 }: {
   headline: string;
   sub: string;
   children: ReactNode;
   footer: ReactNode;
+  artSrc?: string;
 }) {
   const [showArt, setShowArt] = useState(true);
 
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
-      {/* Left panel */}
-      <div className="relative hidden overflow-hidden lg:flex lg:flex-col lg:justify-between lg:p-12">
-        {/* Artwork bundled locally (web/public/images) so it cannot 404 on a
-            judge machine with no outbound network. Provenance documented in
-            web/public/images/README.md. */}
-        <Image
-          src="/images/login-study-desk.webp"
+      {/* Left panel: light art with high-contrast text cards, including in dark mode. */}
+      <div className="relative hidden overflow-hidden lg:flex lg:flex-col lg:justify-between lg:p-10 xl:p-12">
+        <SafeImage
+          src={artSrc}
           alt=""
-          aria-hidden
-          fill
+          width={768}
+          height={1024}
           sizes="50vw"
-          priority
-          className="object-cover object-center"
+          wrapperClassName="absolute inset-0"
+          className="h-full w-full object-cover object-center"
         />
+        <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-br from-white/45 via-white/20 to-cream-100/55 dark:from-slate-950/45 dark:via-slate-950/30 dark:to-slate-950/60" />
 
-        {/* Indigo scrim: the photograph is warm-toned, so a heavy brand-tinted
-            overlay is required both to harmonise it with the palette and to
-            carry WCAG AA contrast for the white text on top. */}
-        <div
-          aria-hidden
-          className="absolute inset-0 bg-gradient-to-br from-brand-900/92 via-brand-800/88 to-brand-950/95"
-        />
-        <div
-          aria-hidden
-          className="absolute inset-0 bg-[radial-gradient(120%_90%_at_20%_15%,rgba(99,102,241,0.45),transparent_60%)]"
-        />
-
-        <Link href="/" className="relative z-10 text-lg text-white">
+        <Link href="/" className="relative z-10 text-lg text-stone-900 dark:text-white">
           <Logo />
         </Link>
 
-        <div className="relative z-10 max-w-md">
-          <h2 className="text-3xl font-bold leading-tight text-white">{headline}</h2>
-          <p className="mt-3 text-brand-100">{sub}</p>
+        <div className="relative z-10 max-w-md rounded-3xl border border-white/80 bg-white/92 p-7 text-stone-900 shadow-xl backdrop-blur-md dark:border-white/10 dark:bg-slate-950/92 dark:text-white">
+          <h2 className="text-3xl font-bold leading-tight">{headline}</h2>
+          <p className="mt-3 text-stone-700 dark:text-slate-200">{sub}</p>
 
           <ul className="mt-8 space-y-3">
             {BENEFITS.map((b) => (
-              <li key={b.text} className="flex items-start gap-3 text-sm text-brand-50">
-                <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-white/15">
+              <li key={b.text} className="flex items-start gap-3 text-sm text-stone-700 dark:text-slate-200">
+                <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-brand-100 text-brand-800 dark:bg-brand-900 dark:text-brand-100">
                   <b.icon className="h-3.5 w-3.5" aria-hidden />
                 </span>
                 {b.text}
@@ -78,47 +66,46 @@ export function SplitLayout({
           </ul>
 
           {showArt && (
-            <svg viewBox="0 0 360 130" className="mt-10 w-full" role="img" aria-label="Stacked source cards with citations">
+            <svg viewBox="0 0 360 130" className="mt-8 w-full text-brand-800 dark:text-brand-200" role="img" aria-label="Stacked source cards with citations">
               {[
                 { y: 10, w: 250, label: 'Lecture 7 · p.42' },
                 { y: 45, w: 300, label: 'Slides · 12:44' },
                 { y: 80, w: 220, label: 'Textbook · p.87' },
               ].map((c, i) => (
                 <g key={c.label} opacity={1 - i * 0.18}>
-                  <rect x={10 + i * 8} y={c.y} width={c.w} height="30" rx="8" fill="white" opacity={0.14} />
-                  <text x={22 + i * 8} y={c.y + 19} fontSize="11" fill="white" fontFamily="ui-monospace, monospace">
-                    {c.label}
-                  </text>
+                  <rect x={10 + i * 8} y={c.y} width={c.w} height="30" rx="8" fill="currentColor" opacity={0.11} />
+                  <text x={22 + i * 8} y={c.y + 19} fontSize="11" fill="currentColor" fontFamily="ui-monospace, monospace">{c.label}</text>
                 </g>
               ))}
             </svg>
           )}
         </div>
 
-        <p className="relative z-10 flex items-center gap-2 text-xs text-brand-200">
-          <ShieldCheck className="h-4 w-4" aria-hidden />
+        <p className="relative z-10 flex items-center gap-2 rounded-xl border border-white/70 bg-white/85 px-4 py-3 text-xs text-stone-700 shadow-sm backdrop-blur dark:border-white/10 dark:bg-slate-950/90 dark:text-slate-200">
+          <ShieldCheck className="h-4 w-4 shrink-0 text-brand-700 dark:text-brand-300" aria-hidden />
           Passwords hashed with bcrypt · 7-day JWT sessions · your uploads stay yours
         </p>
       </div>
 
-      {/* Mobile image banner — the brief asks for the image on top at reduced
-          height on small screens rather than omitting it. */}
-      <div className="relative h-40 shrink-0 overflow-hidden sm:h-52 lg:hidden">
-        <Image
-          src="/images/login-study-desk.webp"
+      {/* Mobile art banner, with the headline on a readable card. */}
+      <div className="relative h-44 shrink-0 overflow-hidden sm:h-52 lg:hidden">
+        <SafeImage
+          src={artSrc}
           alt=""
-          aria-hidden
-          fill
+          width={768}
+          height={1024}
           sizes="100vw"
-          priority
-          className="object-cover object-center"
+          wrapperClassName="absolute inset-0"
+          className="h-full w-full object-cover object-center"
         />
-        <div aria-hidden className="absolute inset-0 bg-gradient-to-br from-brand-900/90 via-brand-800/85 to-brand-950/92" />
-        <div className="absolute inset-0 flex flex-col justify-between p-5">
-          <Link href="/">
-            <Logo className="text-white" />
+        <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-b from-white/30 via-white/10 to-white/75 dark:from-slate-950/30 dark:via-slate-950/25 dark:to-slate-950/75" />
+        <div className="absolute inset-0 flex flex-col justify-between p-4 sm:p-5">
+          <Link href="/" className="self-start rounded-xl bg-white/90 px-3 py-2 shadow-sm dark:bg-slate-950/90">
+            <Logo className="text-stone-900 dark:text-white" />
           </Link>
-          <p className="max-w-xs text-sm font-medium leading-snug text-white">{headline}</p>
+          <p className="max-w-sm rounded-2xl border border-white/80 bg-white/92 p-3 text-sm font-semibold leading-snug text-stone-900 shadow-md backdrop-blur dark:border-white/10 dark:bg-slate-950/92 dark:text-white">
+            {headline}
+          </p>
         </div>
       </div>
 

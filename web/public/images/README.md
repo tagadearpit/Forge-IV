@@ -1,36 +1,27 @@
-# Image assets
+# StudyMind illustrations
 
-Both images were **generated for this prototype** and are bundled locally. They
-are not scraped from a third-party site, so there is no attribution obligation
-and no external request that could fail during a live demo.
+These locally bundled illustrations are AI-generated. They are served from the app's public directory, so the UI does not depend on a remote image host. WebP files were converted at quality 80; all listed assets are below 150 KB.
 
-| File | Used on | Size |
-|---|---|---|
-| `hero-grounded-ai.webp` | Landing page hero | 40 KB (1600×1195) |
-| `login-study-desk.webp` | Login + Register split panel | 106 KB (1100×1473) |
+The request referenced twelve PNGs in `web/public/images/new/`, but that folder was not present in the repository. Nine supplied JPEGs were available instead. They were converted to WebP; three suitable images are intentionally reused for both a How It Works step and a related role (step 1/login, step 2/empty map, and step 3/Open Graph). The Open Graph image is a 1200×630 crop derived from the step 3 source.
 
-## Why local files rather than Unsplash/Pexels URLs
+| File | Dimensions | File size | Usage |
+|---|---:|---:|---|
+| `hero.webp` | 1024×683 | 34,260 bytes (34.3 KB) | Landing-page hero |
+| `login.webp` | 768×1024 | 56,742 bytes (56.7 KB) | Login panel; reused for How It Works step 1 |
+| `register.webp` | 768×1024 | 33,082 bytes (33.1 KB) | Registration panel |
+| `step-1.webp` | 768×1024 | 56,742 bytes (56.7 KB) | How It Works: step 1; same art as login |
+| `step-2.webp` | 1024×1024 | 61,800 bytes (61.8 KB) | How It Works: step 2; reused for the empty course map |
+| `step-3.webp` | 1024×536 | 18,712 bytes (18.7 KB) | How It Works: step 3; source for `og.webp` |
+| `step-4.webp` | 1024×1024 | 28,428 bytes (28.4 KB) | How It Works: step 4 |
+| `empty-library.webp` | 1024×1024 | 29,618 bytes (29.6 KB) | Knowledge-base empty state |
+| `empty-map.webp` | 1024×1024 | 61,800 bytes (61.8 KB) | Course-map empty state; same art as step 2 |
+| `empty-notes.webp` | 1024×1024 | 32,202 bytes (32.2 KB) | Revision empty state |
+| `cta.webp` | 1024×320 | 12,382 bytes (12.4 KB) | Landing-page call-to-action background |
+| `og.webp` | 1200×630 | 22,984 bytes (23.0 KB) | Open Graph and Twitter social preview metadata |
 
-The brief asked for imagery that "must actually render". A hotlinked
-`images.unsplash.com` URL satisfies that today and breaks the moment the judge's
-machine is offline, behind a firewall, or on a rate-limited CDN. Bundling the
-files under `/public` makes the images deterministic.
+## Implementation notes
 
-Both are converted to **WebP** at ~40–106 KB, down from 2.1 MB and 2.6 MB as
-2K JPEGs — a 96–99% reduction with no visible quality loss at display size.
-
-## Usage notes
-
-- `hero-grounded-ai.webp` is rendered with `next/image` and `priority` (it is the
-  LCP element). `sizes` is set so mobile does not download the desktop size.
-- `login-study-desk.webp` is decorative (`alt=""`, `aria-hidden`) and sits under
-  an indigo scrim. The scrim is heavy by design: the photograph is warm-toned and
-  needs a brand tint to harmonise, and the overlay is what carries WCAG AA contrast
-  for the white text layered on top.
-
-## Regenerating
-
-Both were produced with the Matrix image generator using the prompts recorded in
-this repo's build history. To change them, generate replacements at the same
-aspect ratios (4:3 hero, 3:4 panel) and keep the filenames stable so no code
-changes are needed.
+- The landing hero uses `SafeImage` with priority loading; secondary imagery loads lazily.
+- `SafeImage` reserves its image aspect ratio and renders a branded gradient fallback if an image fails to load.
+- Empty-state artwork is decorative because the adjacent heading and description convey the same meaning; it uses empty alt text and is hidden from assistive technology.
+- Auth page artwork and all landing imagery are presentation-only. The image changes do not alter authentication, tutor, or learner-model behavior.

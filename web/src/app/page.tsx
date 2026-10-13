@@ -1,6 +1,5 @@
 'use client';
 
-import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import {
@@ -11,6 +10,7 @@ import {
 import { SiteHeader, SiteFooter } from '@/components/site-chrome';
 import { ArchitectureDiagram, StepIcon } from '@/components/illustrations';
 import { Reveal } from '@/components/ui';
+import { SafeImage } from '@/components/safe-image';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
@@ -71,18 +71,34 @@ const STEPS = [
   {
     title: 'Upload your material',
     body: 'Drop in lecture PDFs, slide decks, recorded lectures or images. StudyMind extracts text, figures and speech with timestamps.',
+    image: '/images/step-1.webp',
+    imageAlt: 'Study desk with a laptop, headphones and open notebook',
+    width: 768,
+    height: 1024,
   },
   {
     title: 'Knowledge base is built',
     body: 'Content is chunked, embedded, and mapped to topics, subtopics and key concepts — each unit tagged back to its origin.',
+    image: '/images/step-2.webp',
+    imageAlt: 'Mind map branching from a book into connected topics',
+    width: 1024,
+    height: 1024,
   },
   {
     title: 'Chat or take a quiz',
     body: 'Ask anything and get a cited answer, or generate an adaptive assessment focused on what you have not mastered yet.',
+    image: '/images/step-3.webp',
+    imageAlt: 'Open book and glowing light bulb representing a new idea',
+    width: 1024,
+    height: 536,
   },
   {
     title: 'See what changed',
     body: 'Your mastery updates after every answer. The dashboard shows what improved, what is fading, and what to do next.',
+    image: '/images/step-4.webp',
+    imageAlt: 'Trophy above progress bars representing study progress',
+    width: 1024,
+    height: 1024,
   },
 ];
 
@@ -159,15 +175,16 @@ export default function LandingPage() {
               {/* Artwork generated for this prototype and bundled locally, so it
                   always renders — no external CDN that could 404 on demo day.
                   See web/public/images/README.md for provenance. */}
-              <div className="relative mx-auto w-full max-w-lg">
-                <Image
-                  src="/images/hero-grounded-ai.webp"
-                  alt="Translucent document and slide panels tethered by luminous citation lines to a glowing core, representing material grounded to a single knowledge source"
-                  width={1600}
-                  height={1195}
+              <div className="relative mx-auto w-full max-w-lg rounded-3xl bg-white p-2 shadow-lift ring-1 ring-black/5 dark:bg-slate-900 dark:ring-white/10">
+                <SafeImage
+                  src="/images/hero.webp"
+                  alt="Open book connected to lesson video, notes and a glowing study idea"
+                  width={1024}
+                  height={683}
                   priority
-                  sizes="(max-width: 1024px) 100vw, 560px"
-                  className="w-full rounded-3xl shadow-lift ring-1 ring-white/10"
+                  sizes="(max-width: 640px) 100vw, (max-width: 1024px) 80vw, 560px"
+                  wrapperClassName="hero-float aspect-[1024/683] w-full rounded-3xl"
+                  className="h-full w-full rounded-3xl object-cover"
                 />
                 {/* Floating citation chip echoing the product's real UI. */}
                 <div className="absolute -bottom-5 left-4 flex items-center gap-2 rounded-2xl border border-[color:rgb(var(--border))] bg-[color:rgb(var(--card))] px-3.5 py-2.5 shadow-lift sm:left-8">
@@ -222,15 +239,26 @@ export default function LandingPage() {
               />
             </Reveal>
 
-            <ol className="mt-14 grid gap-8 md:grid-cols-4">
+            <ol className="mt-14 grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4">
               {STEPS.map((s, i) => (
                 <Reveal key={s.title}>
-                  <li className="relative">
+                  <li className="relative h-full rounded-2xl border border-[color:rgb(var(--border))] bg-[color:rgb(var(--card))] p-4 shadow-card">
                     <div className="flex items-center gap-3">
                       <div className="grid h-11 w-11 place-items-center rounded-2xl bg-brand-600 text-white">
                         <StepIcon index={i} />
                       </div>
                       <span className="font-mono text-xs text-muted">0{i + 1}</span>
+                    </div>
+                    <div className="relative mt-4 flex aspect-[4/3] items-center justify-center overflow-hidden rounded-xl bg-cream-50 p-2 dark:bg-slate-900">
+                      <SafeImage
+                        src={s.image}
+                        alt={s.imageAlt}
+                        width={s.width}
+                        height={s.height}
+                        sizes="(max-width: 639px) 90vw, (max-width: 1023px) 44vw, 22vw"
+                        wrapperClassName="absolute inset-0 h-full w-full"
+                        className="h-full w-full object-contain"
+                      />
                     </div>
                     <h3 className="mt-4 font-semibold">{s.title}</h3>
                     <p className="mt-2 text-sm text-muted">{s.body}</p>
@@ -438,22 +466,28 @@ export default function LandingPage() {
         </section>
 
         {/* --------------------------- FINAL CTA --------------------------- */}
-        <section className="border-t border-[color:rgb(var(--border))] py-20 sm:py-24">
+        <section className="relative isolate overflow-hidden border-t border-[color:rgb(var(--border))] py-16 sm:py-20">
+          <SafeImage
+            src="/images/cta.webp"
+            alt=""
+            width={1024}
+            height={320}
+            sizes="100vw"
+            wrapperClassName="absolute inset-0 -z-20"
+            className="h-full w-full object-cover"
+          />
+          <div aria-hidden="true" className="absolute inset-0 -z-10 bg-gradient-to-r from-white/90 via-white/75 to-white/40 dark:from-slate-950/85 dark:via-slate-950/75 dark:to-slate-950/50" />
           <div className="mx-auto max-w-4xl px-4 text-center sm:px-6">
             <Reveal>
-              <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl">
-                Start studying smarter
-              </h2>
-              <p className="mx-auto mt-4 max-w-xl text-muted">
-                Upload your first lecture and see a cited answer in under a minute.
-              </p>
-              <div className="mt-8 flex flex-wrap justify-center gap-3">
-                <Link href="/register" className="btn-primary px-7 py-3.5 text-base">
-                  Create free account <ArrowRight className="h-4 w-4" aria-hidden />
-                </Link>
-                <Link href="/login" className="btn-secondary px-7 py-3.5 text-base">
-                  Try the demo account
-                </Link>
+              <div className="rounded-3xl border border-white/80 bg-white/90 px-6 py-10 shadow-lift backdrop-blur-sm dark:border-white/10 dark:bg-slate-950/90 sm:px-10">
+                <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl">Start studying smarter</h2>
+                <p className="mx-auto mt-4 max-w-xl text-muted">Upload your first lecture and see a cited answer in under a minute.</p>
+                <div className="mt-8 flex flex-wrap justify-center gap-3">
+                  <Link href="/register" className="btn-primary px-7 py-3.5 text-base">
+                    Create free account <ArrowRight className="h-4 w-4" aria-hidden />
+                  </Link>
+                  <Link href="/login" className="btn-secondary px-7 py-3.5 text-base">Try the demo account</Link>
+                </div>
               </div>
             </Reveal>
           </div>

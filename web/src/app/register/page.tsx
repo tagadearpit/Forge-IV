@@ -149,6 +149,7 @@ export default function RegisterPage() {
     <SplitLayout
       headline="Create your account. Start studying smarter today."
       sub="Upload a lecture and get a cited answer in under a minute. No credit card, no setup."
+      artSrc="/images/register.webp"
       footer={
         <>
           Already have an account?{' '}

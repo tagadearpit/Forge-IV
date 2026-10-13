@@ -10,6 +10,7 @@ import { api, type SourceSummary } from '@/lib/api';
 import { Button, EmptyState, ErrorState, Skeleton, useToast, Tabs } from '@/components/ui';
 import { cn, formatDate, formatTimestamp } from '@/lib/utils';
 import { SourceViewer, TranscriptSegment } from '@/components/source-viewer';
+import { SafeImage } from '@/components/safe-image';
 
 const ICON: Record<string, React.ComponentType<{ className?: string }>> = {
   pdf: FileText,
@@ -211,7 +212,7 @@ function KnowledgeBaseInner() {
 
       {state === 'ready' && sources.length === 0 && (
         <EmptyState
-          icon={<FileText className="h-10 w-10" aria-hidden />}
+          icon={<SafeImage src="/images/empty-library.webp" alt="" width={1024} height={1024} sizes="(max-width: 640px) 70vw, 280px" wrapperClassName="mx-auto w-full max-w-[280px] rounded-2xl" className="h-full w-full object-cover" />}
           title="Your library is ready for its first source"
           description="Upload your first lecture PDF or slide deck and the topic tree is built automatically."
           action={<Button onClick={() => fileRef.current?.click()}>Upload your first file</Button>}
