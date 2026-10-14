@@ -1,13 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Save, Globe, Target } from 'lucide-react';
+import { Save, Globe, Target, Trash2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { Button, Alert, useToast } from '@/components/ui';
 
 export default function SettingsPage() {
-  const { user, updateProfile } = useAuth();
+  const { user, updateProfile, logout } = useAuth();
   const toast = useToast();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -15,6 +15,11 @@ export default function SettingsPage() {
   const [examDate, setExamDate] = useState('');
   const [targetScore, setTargetScore] = useState('');
   const [saving, setSaving] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [deleteSuccess, setDeleteSuccess] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -25,6 +30,14 @@ export default function SettingsPage() {
     setExamDate(d ? new Date(d).toISOString().slice(0, 10) : '');
     setTargetScore(user.prefs?.targetScore != null ? String(user.prefs.targetScore) : '');
   }, [user]);
+
+  const deleteData = async () => {
+    if (deleteConfirm !== 'DELETE') return;
+    setDeleting(true); setDeleteError('');
+    try { await api.deleteMyData(); setDeleteSuccess(true); toast.push('success', 'Your account and data were deleted.'); logout(); }
+    catch (err: any) { setDeleteError(err?.message ?? 'Could not delete your data. Please try again.'); }
+    finally { setDeleting(false); }
+  };
 
   const save = async () => {
     setSaving(true);
@@ -99,6 +112,28 @@ export default function SettingsPage() {
       </section>
 
       <Button onClick={save} loading={saving}><Save className="h-4 w-4" aria-hidden /> Save my changes</Button>
+
+      <section className="card border-red-200 p-6 dark:border-red-900">
+        <h2 className="font-semibold text-red-700 dark:text-red-300">Delete my data</h2>
+        <p className="mt-2 text-sm text-muted">Permanently delete your account and its StudyMind data. This cannot be undone.</p>
+        {deleteSuccess && <p role="status" className="mt-3 text-sm text-green-700">Your data was deleted successfully.</p>}
+        <button type="button" className="btn-secondary mt-4 border-red-300 text-red-700" onClick={() => { setDeleteOpen(true); setDeleteConfirm(''); setDeleteError(''); }}>
+          <Trash2 className="mr-2 inline h-4 w-4" aria-hidden /> Delete my data
+        </button>
+      </section>
+      {deleteOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="presentation">
+        <section role="dialog" aria-modal="true" aria-labelledby="delete-title" className="card w-full max-w-md p-6">
+          <h2 id="delete-title" className="text-lg font-semibold">Confirm permanent deletion</h2>
+          <p className="mt-2 text-sm text-muted">Type <strong>DELETE</strong> to permanently delete your account and data.</p>
+          <label htmlFor="delete-confirm" className="label mt-4">Type DELETE</label>
+          <input id="delete-confirm" className="input" value={deleteConfirm} onChange={(e) => setDeleteConfirm(e.target.value)} autoFocus />
+          {deleteError && <p role="alert" className="mt-3 text-sm text-red-600">{deleteError}</p>}
+          <div className="mt-5 flex justify-end gap-2">
+            <button type="button" className="btn-secondary px-4 py-2" disabled={deleting} onClick={() => setDeleteOpen(false)}>Cancel</button>
+            <button type="button" className="rounded-lg bg-red-600 px-4 py-2 text-white disabled:opacity-50" disabled={deleteConfirm !== 'DELETE' || deleting} onClick={() => void deleteData()}>{deleting ? 'Deleting…' : 'Delete permanently'}</button>
+          </div>
+        </section>
+      </div>}
     </div>
   );
 }

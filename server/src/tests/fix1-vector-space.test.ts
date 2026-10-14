@@ -1,3 +1,4 @@
+import { connectTestDatabase, disconnectTestDatabase } from './testDatabase.js';
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -69,7 +70,7 @@ describe('retrieveUnits embeds the query in the units\' space', () => {
   let userId: string;
 
   async function seed() {
-    await mongoose.connect('mongodb://127.0.0.1:27017/studymind_vectorspace_test');
+    await connectTestDatabase('studymind_vectorspace_test');
     await mongoose.connection.dropDatabase();
     const { User } = await import('../models/User.js');
     const u = await User.create({
@@ -83,7 +84,7 @@ describe('retrieveUnits embeds the query in the units\' space', () => {
 
   async function cleanup() {
     await mongoose.connection.dropDatabase();
-    await mongoose.disconnect();
+    await disconnectTestDatabase();
     __setActiveSpace(null);
   }
 
@@ -247,7 +248,7 @@ describe('grounding thresholds are provider-specific', () => {
       delete process.env.GROUNDING_SIMILARITY_THRESHOLD;
       delete process.env.GROUNDING_SIMILARITY_THRESHOLD_LEGACY;
       __setActiveSpace({ provider: 'gemini', dim: FAKE_DIM });
-      await mongoose.connect(`mongodb://127.0.0.1:27017/${dbName}`);
+      await connectTestDatabase(dbName);
       const { User } = await import('../models/User.js');
       const { Source } = await import('../models/Source.js');
       const u = await User.create({ name: 'Model Judged', email: `${dbName}@test.local`, phone: '+919000000098', passwordHash: 'x' });
@@ -266,7 +267,7 @@ describe('grounding thresholds are provider-specific', () => {
     } finally {
       (ai as any).embed = originalEmbed;
       (ai as any).groundedAnswer = originalGrounded;
-      if (mongoose.connection.readyState) { await mongoose.connection.dropDatabase(); await mongoose.disconnect(); }
+      if (mongoose.connection.readyState) { await mongoose.connection.dropDatabase(); await disconnectTestDatabase(); }
       process.env = saved;
       __setActiveSpace(null);
     }

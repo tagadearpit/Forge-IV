@@ -1,3 +1,4 @@
+import { connectTestDatabase, disconnectTestDatabase } from './testDatabase.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import mongoose from 'mongoose';
@@ -17,7 +18,7 @@ test('chat prompt history retains at most eight messages and about 3,000 tokens'
 
 test('chat threads and messages are isolated by user and can be restored with scope', async () => {
   const dbName = `studymind_chat_${Date.now()}`;
-  await mongoose.connect(`mongodb://127.0.0.1:27017/${dbName}`);
+  await connectTestDatabase(dbName);
   try {
     const [a, b] = await Promise.all([
       User.create({ name: 'Chat Owner A', email: `${dbName}a@test.local`, phone: '+919000000091', passwordHash: 'x' }),
@@ -34,6 +35,6 @@ test('chat threads and messages are isolated by user and can be restored with sc
     assert.equal(restoredMessages[0]?.content, 'Page-cited explanation');
   } finally {
     await mongoose.connection.dropDatabase();
-    await mongoose.disconnect();
+    await disconnectTestDatabase();
   }
 });

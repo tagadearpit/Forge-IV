@@ -91,6 +91,8 @@ export interface RetrievalScope {
   topK?: number;
   locationFilter?: { pageStart?: number; pageEnd?: number; slideStart?: number; slideEnd?: number };
   pageOrder?: boolean;
+  /** Fetch every unit in the filtered scope; reserved for whole-source summaries. */
+  all?: boolean;
 }
 
 /**
@@ -194,7 +196,7 @@ export async function retrieveUnits(userId: string, scope: RetrievalScope): Prom
     ? Number(a.u.location?.page ?? a.u.location?.slide ?? a.u.location?.startSec ?? 0) - Number(b.u.location?.page ?? b.u.location?.slide ?? b.u.location?.startSec ?? 0)
     : b.sim - a.sim);
 
-  const top = scored.slice(0, topK);
+  const top = scope.all ? scored : scored.slice(0, topK);
   const sourceIds = [...new Set(top.map((s: any) => String(s.u.sourceId)))];
   const sources = await Source.find({ _id: { $in: sourceIds } }).select('title type').lean();
   const sourceMap = new Map(sources.map((s: any) => [String(s._id), s]));
@@ -279,57 +281,119 @@ export function isGrounded(topSimilarity: number, overlap: number): boolean {
 
 /* --------------------------- answer synthesis -------------------------- */
 
+export interface LocationIntent {
+  explicit: boolean;
+  wholeDocumentSummary: boolean;
+  pageNumber: number | null;
+  slideNumber: number | null;
+  sectionNumber: string | null;
+  refersToSection: boolean;
+}
+
+/** Only literal location references count; topic words like "page replacement" do not. */
+export function parseLocationIntent(question: string, sectionTitle?: string): LocationIntent {
+  const pageNumber = Number(/\bpage\s+(\d+)\b/i.exec(question)?.[1]) || null;
+  const slideNumber = Number(/\bslide\s+(\d+)\b/i.exec(question)?.[1]) || null;
+  const sectionNumber = /\b(?:section|chapter)\s+(\d+(?:\.\d+)*)\b/i.exec(question)?.[1] ?? null;
+  const refersToSection = /\b(?:this|that|my|the)\s+(?:section|chapter)\b/i.test(question);
+  const refersToDocument = /\b(?:this|that|my|the)\s+(?:document|upload)\b/i.test(question);
+  const wholeDocument = /\b(?:whole|entire|complete)\s+(?:document|upload)\b|\b(?:document|upload)\s+as\s+a\s+whole\b/i.test(question);
+  const summaryIntent = /\b(?:summari[sz]e|summary|overview|recap)\b/i.test(question);
+  const wholeDocumentSummary = summaryIntent && (wholeDocument || refersToDocument);
+  const explicit = Boolean(
+    sectionTitle?.trim() || pageNumber || slideNumber || sectionNumber ||
+    refersToSection || refersToDocument || wholeDocument
+  );
+  return { explicit, wholeDocumentSummary, pageNumber, slideNumber, sectionNumber, refersToSection };
+}
+
+function citedLocation(citations: Array<{ sourceId: string; location?: { page?: number | null; slide?: number | null } }>, sourceIds: string[]) {
+  const matching = citations.filter((citation) =>
+    (!sourceIds.length || sourceIds.includes(String(citation.sourceId))) &&
+    (citation.location?.page != null || citation.location?.slide != null)
+  );
+  const sourceId = matching.at(-1)?.sourceId;
+  if (!sourceId) return null;
+  const sameSource = matching.filter((citation) => String(citation.sourceId) === String(sourceId));
+  const pages = sameSource.map((citation) => citation.location?.page).filter((value): value is number => value != null).map(Number);
+  if (pages.length) {
+    return { sourceId: String(sourceId), filter: { pageStart: Math.min(...pages), pageEnd: Math.max(...pages) + 1 } };
+  }
+  const slides = sameSource.map((citation) => citation.location?.slide).filter((value): value is number => value != null).map(Number);
+  if (!slides.length) return null;
+  return { sourceId: String(sourceId), filter: { slideStart: Math.min(...slides), slideEnd: Math.max(...slides) + 1 } };
+}
+
 export async function answerQuestion(
   userId: string,
   question: string,
-  opts: { scope?: { sourceIds?: string[]; topicIds?: string[]; sectionTitle?: string }; language?: 'en' | 'hi'; answerStyle?: 'quick' | 'deep'; studyLevel?: string; history?: Array<{ role: 'user' | 'assistant'; content: string }> } = {}
+  opts: {
+    scope?: { sourceIds?: string[]; topicIds?: string[]; sectionTitle?: string };
+    language?: 'en' | 'hi'; answerStyle?: 'quick' | 'deep'; studyLevel?: string;
+    history?: Array<{ role: 'user' | 'assistant'; content: string }>;
+    previousAssistantCitations?: Array<{ sourceId: string; location?: { page?: number | null; slide?: number | null } }>;
+  } = {}
 ): Promise<TutorAnswer> {
   const language: 'en' | 'hi' = opts.language === 'hi' ? 'hi' : 'en';
   const baseScope = opts.scope ?? {};
-  const locationIntent = Boolean(baseScope.sectionTitle) || /\b(?:document|upload|section|chapter|page|slide)\b|that section|summari[sz]e (?:this|that|my) (?:upload|document|chapter|section)/i.test(question);
+  const intent = parseLocationIntent(question, baseScope.sectionTitle);
   const explicitSourceIds = baseScope.sourceIds ?? [];
   let sourceIds = explicitSourceIds;
   let locationFilter: RetrievalScope['locationFilter'];
-  let pageOrder = false;
   let resolvedSource: any = null;
-  if (locationIntent) {
-    if (sourceIds.length === 1) resolvedSource = await Source.findOne({ _id: sourceIds[0], userId }).select('title outline type').lean();
-    else if (sourceIds.length > 1) resolvedSource = await Source.findOne({ _id: { $in: sourceIds }, userId, status: 'ready' }).sort({ createdAt: -1 }).select('title outline type').lean();
-    else if (!baseScope.topicIds?.length) resolvedSource = await Source.findOne({ userId, status: 'ready' }).sort({ createdAt: -1 }).select('title outline type').lean();
+  const previousLocation = intent.refersToSection && !intent.sectionNumber
+    ? citedLocation(opts.previousAssistantCitations ?? [], explicitSourceIds)
+    : null;
+
+  if (intent.explicit) {
+    if (sourceIds.length === 1) {
+      resolvedSource = await Source.findOne({ _id: sourceIds[0], userId, status: 'ready' }).select('title outline type').lean();
+    } else if (sourceIds.length > 1) {
+      resolvedSource = await Source.findOne({ _id: { $in: sourceIds }, userId, status: 'ready' }).sort({ createdAt: -1 }).select('title outline type').lean();
+    } else if (previousLocation?.sourceId) {
+      resolvedSource = await Source.findOne({ _id: previousLocation.sourceId, userId, status: 'ready' }).select('title outline type').lean();
+    } else if (!baseScope.topicIds?.length && !intent.refersToSection) {
+      // Only explicit location references may resolve to the latest upload; a pronoun section must use citation/thread context.
+      resolvedSource = await Source.findOne({ userId, status: 'ready' }).sort({ createdAt: -1 }).select('title outline type').lean();
+    }
+
     if (resolvedSource) {
       sourceIds = [String(resolvedSource._id)];
-      const previousContext = [...(opts.history ?? [])].reverse().find((m) => m.role === 'user')?.content ?? '';
-      const locQuestion = `${question} ${previousContext} ${baseScope.sectionTitle ?? ''}`;
-      const section = /\b(?:section|chapter)\s+(\d+(?:\.\d+)*)/i.exec(locQuestion);
-      const page = /\bpage\s+(\d+)\b/i.exec(question);
-      const slide = /\bslide\s+(\d+)\b/i.exec(question);
       const outline = (resolvedSource.outline ?? []) as Array<{ title: string; page?: number | null; slide?: number | null; level?: number }>;
-      if (page) { const n = Number(page[1]); locationFilter = { pageStart: n, pageEnd: n + 1 }; pageOrder = true; }
-      else if (slide) { const n = Number(slide[1]); locationFilter = { slideStart: n, slideEnd: n + 1 }; pageOrder = true; }
-      else if (section || baseScope.sectionTitle) {
-        const number = section?.[1];
-        const matchIndex = outline.findIndex((e) => {
-          if (number) {
-            const found = /^(?:(?:chapter|section|unit)\s+)?(\d+(?:\.\d+)*)\b/i.exec(e.title);
-            return found?.[1] === number;
+      if (intent.pageNumber != null) {
+        locationFilter = { pageStart: intent.pageNumber, pageEnd: intent.pageNumber + 1 };
+      } else if (intent.slideNumber != null) {
+        locationFilter = { slideStart: intent.slideNumber, slideEnd: intent.slideNumber + 1 };
+      } else if (intent.sectionNumber || baseScope.sectionTitle) {
+        const matchIndex = outline.findIndex((entry) => {
+          if (intent.sectionNumber) {
+            const found = /^(?:(?:chapter|section|unit)\s+)?(\d+(?:\.\d+)*)\b/i.exec(entry.title);
+            return found?.[1] === intent.sectionNumber;
           }
-          return e.title.trim().toLowerCase() === baseScope.sectionTitle?.trim().toLowerCase();
+          return entry.title.trim().toLowerCase() === baseScope.sectionTitle?.trim().toLowerCase();
         });
         if (matchIndex >= 0) {
           const match = outline[matchIndex];
           const locKey = match.page != null ? 'page' : match.slide != null ? 'slide' : null;
-          const start = locKey ? Number(match[locKey] ?? 0) : null;
-          const next = locKey ? outline.slice(matchIndex + 1).find((e) => (e.level ?? 1) <= (match.level ?? 1) && e[locKey] != null) : null;
-          if (locKey && start != null) locationFilter = locKey === 'page' ? { pageStart: start, ...(next?.page != null ? { pageEnd: Number(next.page) } : {}) } : { slideStart: start, ...(next?.slide != null ? { slideEnd: Number(next.slide) } : {}) };
+          const start = locKey ? Number(match[locKey]) : null;
+          const next = locKey
+            ? outline.slice(matchIndex + 1).find((entry) => (entry.level ?? 1) <= (match.level ?? 1) && entry[locKey] != null)
+            : null;
+          if (locKey && start != null) {
+            locationFilter = locKey === 'page'
+              ? { pageStart: start, ...(next?.page != null ? { pageEnd: Number(next.page) } : {}) }
+              : { slideStart: start, ...(next?.slide != null ? { slideEnd: Number(next.slide) } : {}) };
+          }
         }
-        pageOrder = true;
-      } else if (/that section/i.test(question) && previousContext) pageOrder = true;
-      else pageOrder = true;
+      } else if (previousLocation && previousLocation.sourceId === String(resolvedSource._id)) {
+        locationFilter = previousLocation.filter;
+      }
     }
   }
+  const pageOrder = Boolean(locationFilter || intent.wholeDocumentSummary);
   const effectiveScope = { ...baseScope, ...(sourceIds.length ? { sourceIds } : {}) };
   const explicitlyScoped = Boolean(effectiveScope.sourceIds?.length || effectiveScope.topicIds?.length);
-  const topK = locationIntent ? Math.max(env.RETRIEVAL_TOP_K, 48) : env.RETRIEVAL_TOP_K;
+  const topK = intent.explicit ? Math.max(env.RETRIEVAL_TOP_K, 48) : env.RETRIEVAL_TOP_K;
 
   const isFollowUp = /^(?:go deeper|tell me more|explain more|why|how so|what about that|expand on that|continue|elaborate)(?:\s|$|[?.!])/i.test(question.trim());
   const previousUser = [...(opts.history ?? [])].reverse().find((m) => m.role === 'user')?.content;
@@ -342,6 +406,7 @@ export async function answerQuestion(
     topicIds: effectiveScope.topicIds,
     locationFilter,
     pageOrder,
+    all: intent.wholeDocumentSummary,
   });
 
   const audit = { citedRequested: 0, citedVerified: 0, stripped: 0, declined: false };
@@ -413,9 +478,8 @@ export async function answerQuestion(
 
   let parsed: TutorJson;
   try {
-    const summaryIntent = /\b(?:summari[sz]e|summary|overview|recap)\b/i.test(question);
     let draft;
-    if (locationIntent && summaryIntent && hits.length > 8) {
+    if (intent.wholeDocumentSummary && hits.length > 8) {
       const mapped: Array<{ answer: string; citedUnitIds: string[] }> = [];
       for (let i = 0; i < hits.length; i += 6) {
         const batch = hits.slice(i, i + 6);

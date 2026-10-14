@@ -150,19 +150,18 @@ router.post('/ask', requireAuth, askLimiter, validateBody(askSchema), asyncHandl
   await thread.save();
 
   const priorRows = await ChatMessage.find({ userId, threadId: thread._id })
-    .sort({ createdAt: -1 }).limit(8).select('role content').lean();
+    .sort({ createdAt: -1 }).limit(8).select('role content citations').lean();
   const history = promptHistory(priorRows.reverse() as any);
   const userMessage = await ChatMessage.create({ userId, threadId: thread._id, role: 'user', content: question, scope });
   const user = await User.findById(userId).select('prefs').lean();
   const prefs = user?.prefs as any;
   const result = await answerQuestion(userId, question, {
     scope, history,
+    previousAssistantCitations: [...priorRows].reverse().find((row: any) => row.role === 'assistant')?.citations ?? [],
     language: language ?? (prefs?.language === 'hi' ? 'hi' : 'en'),
     answerStyle: prefs?.answerStyle === 'deep' ? 'deep' : 'quick',
     studyLevel: prefs?.studyLevel ?? 'self-learner',
   });
-  if (!scope?.sourceIds?.length && !scope?.topicIds?.length && result.usingSource) scope = { ...scope, sourceIds: [result.usingSource.id] };
-  thread.scope = scope as never;
   if (includeContexts) {
     const hits = await retrieveUnits(userId, { question, topK: env.RETRIEVAL_TOP_K, sourceIds: scope?.sourceIds, topicIds: scope?.topicIds });
     result.retrievedContexts = hits.map((h) => ({ unitId: h.unitId, sourceTitle: h.sourceTitle, text: h.text, similarity: h.similarity, location: h.location }));

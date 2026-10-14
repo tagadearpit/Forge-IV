@@ -66,7 +66,7 @@ export default function CourseMapPage() {
 
   if (loading) return <div className="space-y-3">{[0,1,2].map(i => <Skeleton key={i} className="h-24" />)}</div>;
   if (!flat.length)
-    return <EmptyState icon={<SafeImage src="/images/empty-map.webp" alt="" width={1024} height={1024} sizes="(max-width: 640px) 70vw, 280px" wrapperClassName="mx-auto w-full max-w-[280px] rounded-2xl" className="h-full w-full object-cover" />} title="Your course map is waiting for its first topic" description="Add study material and I’ll sketch out how the ideas connect." />;
+    return <EmptyState icon={<SafeImage src="/images/empty-map.webp" alt="Clay-style open book with connected topic bubbles illustrating a course map" width={1024} height={1024} sizes="(max-width: 640px) 70vw, 280px" wrapperClassName="mx-auto w-full max-w-[280px] rounded-2xl" className="h-full w-full object-cover" />} title="Your course map is waiting for its first topic" description="Add study material and I’ll sketch out how the ideas connect." />;
 
   const width = Math.max(...nodes.map((n) => n.x + n.w)) + 40;
   const height = Math.max(...nodes.map((n) => n.y + n.h)) + 40;

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Menu, X, Moon, Sun, ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -15,15 +15,28 @@ const NAV = [
 
 export function ThemeToggle() {
   const [dark, setDark] = useState(false);
+  const [animationKey, setAnimationKey] = useState<number | null>(null);
+  const transitionTimer = useRef<number | null>(null);
 
   useEffect(() => {
     setDark(document.documentElement.classList.contains('dark'));
+    return () => {
+      if (transitionTimer.current !== null) window.clearTimeout(transitionTimer.current);
+    };
   }, []);
 
   const toggle = () => {
     const next = !dark;
+    const root = document.documentElement;
     setDark(next);
-    document.documentElement.classList.toggle('dark', next);
+    setAnimationKey((current) => (current ?? 0) + 1);
+    root.classList.add('theme-transition');
+    root.classList.toggle('dark', next);
+    if (transitionTimer.current !== null) window.clearTimeout(transitionTimer.current);
+    transitionTimer.current = window.setTimeout(() => {
+      root.classList.remove('theme-transition');
+      transitionTimer.current = null;
+    }, 280);
     try {
       localStorage.setItem('studymind.theme', next ? 'dark' : 'light');
     } catch {
@@ -35,9 +48,16 @@ export function ThemeToggle() {
     <button
       onClick={toggle}
       aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+      aria-pressed={dark}
       className="rounded-lg p-2 text-muted hover:bg-[color:rgb(var(--surface))]"
     >
-      {dark ? <Sun className="h-4 w-4" aria-hidden /> : <Moon className="h-4 w-4" aria-hidden />}
+      <span
+        key={animationKey ?? 'idle'}
+        className={animationKey === null ? 'inline-flex' : 'inline-flex theme-toggle-pop'}
+        aria-hidden="true"
+      >
+        {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+      </span>
     </button>
   );
 }
@@ -179,7 +199,7 @@ export function SiteFooter() {
           </p>
           <p className="mt-2">
             Demo course material was authored for this prototype and is offered under CC BY 4.0.
-            No third-party imagery is bundled; all diagrams are original SVG.
+            Illustrations are AI-generated; all diagrams are original SVG.
           </p>
           <p className="mt-2">© {new Date().getFullYear()} StudyMind. All rights reserved.</p>
         </div>

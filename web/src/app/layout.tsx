@@ -23,6 +23,7 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://studymind-forgeiv.vercel.app'),
   title: 'StudyMind — your study buddy for cited answers and curious questions',
   description:
     'Upload lectures, textbooks and slides. Get source-cited answers, adaptive quizzes, and a mastery model that knows what you have actually learned.',
@@ -32,18 +33,18 @@ export const metadata: Metadata = {
     description:
       'Answers grounded in your material cite the page, slide or timestamp. General-knowledge answers are clearly labelled and kept separate.',
     type: 'website',
-    images: [{ url: '/images/og.webp', width: 1200, height: 630, alt: 'StudyMind illustrations for source-based learning' }],
+    images: [{ url: '/images/og.png', width: 1200, height: 630, alt: 'StudyMind illustrations for source-based learning' }],
   },
   twitter: {
     card: 'summary_large_image',
-    images: ['/images/og.webp'],
+    images: ['/images/og.png'],
   },
 };
 
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  themeColor: '#059669',
+  themeColor: '#4F46E5',
 };
 
 /**

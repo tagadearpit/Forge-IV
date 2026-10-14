@@ -72,15 +72,15 @@ const STEPS = [
     title: 'Upload your material',
     body: 'Drop in lecture PDFs, slide decks, recorded lectures or images. StudyMind extracts text, figures and speech with timestamps.',
     image: '/images/step-1.webp',
-    imageAlt: 'Study desk with a laptop, headphones and open notebook',
-    width: 768,
+    imageAlt: 'Clay-style document, image, notes, and video icons ready to upload',
+    width: 1024,
     height: 1024,
   },
   {
     title: 'Knowledge base is built',
     body: 'Content is chunked, embedded, and mapped to topics, subtopics and key concepts — each unit tagged back to its origin.',
     image: '/images/step-2.webp',
-    imageAlt: 'Mind map branching from a book into connected topics',
+    imageAlt: 'Clay-style open book with connected nodes representing a topic map',
     width: 1024,
     height: 1024,
   },
@@ -88,15 +88,15 @@ const STEPS = [
     title: 'Chat or take a quiz',
     body: 'Ask anything and get a cited answer, or generate an adaptive assessment focused on what you have not mastered yet.',
     image: '/images/step-3.webp',
-    imageAlt: 'Open book and glowing light bulb representing a new idea',
+    imageAlt: 'Clay-style checklist and blank chat bubble representing a quiz or tutor chat',
     width: 1024,
-    height: 536,
+    height: 1024,
   },
   {
     title: 'See what changed',
     body: 'Your mastery updates after every answer. The dashboard shows what improved, what is fading, and what to do next.',
     image: '/images/step-4.webp',
-    imageAlt: 'Trophy above progress bars representing study progress',
+    imageAlt: 'Trophy and rising progress bars representing learning progress',
     width: 1024,
     height: 1024,
   },
@@ -626,7 +626,7 @@ function HeroEvaluationStats() {
 
 function EvalTable() {
   const [metrics, setMetrics] = useState<Record<string, number> | null>(null);
-  const [state, setState] = useState<'loading' | 'ready' | 'empty'>('loading');
+  const [state, setState] = useState<'ready' | 'empty'>('empty');
 
   useEffect(() => {
     let cancelled = false;
@@ -662,9 +662,7 @@ function EvalTable() {
           <p className="text-xs text-muted">
             {state === 'ready'
               ? 'Latest run — measured against the project test set'
-              : state === 'loading'
-                ? 'Loading…'
-                : 'Evaluation not run yet'}
+              : 'Evaluation not run yet'}
           </p>
         </div>
         {state === 'ready' && metrics && (
@@ -691,9 +689,7 @@ function EvalTable() {
                   <td className="px-5 py-3 font-medium">{label}</td>
                   <td className="px-5 py-3 text-muted">{desc}</td>
                   <td className="px-5 py-3 text-right font-mono">
-                    {state === 'loading' ? (
-                      <span className="text-muted">…</span>
-                    ) : typeof value === 'number' ? (
+                    {typeof value === 'number' ? (
                       <span
                         className={cn(
                           'font-semibold',

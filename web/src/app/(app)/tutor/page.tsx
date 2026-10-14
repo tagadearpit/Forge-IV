@@ -190,7 +190,6 @@ export default function TutorPage() {
           } } : {}),
         });
         if (result.threadId) setThreadId(result.threadId);
-        if (result.usingSource && !scope.sectionTitle) setScope((current) => ({ ...current, label: `source:${result.usingSource!.id}`, sourceIds: [result.usingSource!.id], topicIds: undefined }));
         if (result.threadId && !threads.some((t) => t.id === result.threadId)) setThreads((t) => [{ id: result.threadId!, title: q.slice(0, 80) }, ...t]);
         setMessages((m) => [
           ...m,

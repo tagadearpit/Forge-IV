@@ -214,6 +214,8 @@ export const api = {
     }),
 
   me: () => apiFetch<{ user: SessionUser }>('/auth/me'),
+  deleteMyData: () => apiFetch<void>('/auth/me/data', { method: 'DELETE', body: JSON.stringify({ confirm: 'DELETE' }) }),
+
   updateMe: (body: Record<string, unknown>) =>
     apiFetch<{ user: SessionUser }>('/auth/me', { method: 'PATCH', body: JSON.stringify(body) }),
   logout: () => apiFetch<void>('/auth/logout', { method: 'POST' }),

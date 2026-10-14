@@ -1,3 +1,4 @@
+import { connectTestDatabase, disconnectTestDatabase } from './testDatabase.js';
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -130,7 +131,7 @@ describe('misconceptions are never invented', () => {
 
 describe('Fix 6 — no cross-user topic leakage', () => {
   test('concurrent generation for two users keeps topic tags inside each user', async () => {
-    await mongoose.connect('mongodb://127.0.0.1:27017/studymind_concurrency_test');
+    await connectTestDatabase('studymind_concurrency_test');
     await mongoose.connection.dropDatabase();
 
     const { User } = await import('../models/User.js');
@@ -183,6 +184,6 @@ describe('Fix 6 — no cross-user topic leakage', () => {
     }
 
     await mongoose.connection.dropDatabase();
-    await mongoose.disconnect();
+    await disconnectTestDatabase();
   });
 });
