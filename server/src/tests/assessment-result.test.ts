@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { isNonblankAnswer, latestNonblankResponses, summarizeAssessment } from '../services/assessmentResult.js';
+import { selectLegacyResponseToKeep } from '../services/assessmentResponseMigration.js';
 
 test('assessment result ignores blank answers and caps score against distinct questions', () => {
   const result = summarizeAssessment(3, [
@@ -21,6 +22,15 @@ test('blank and whitespace-only UI answers are not persisted or counted', () => 
   assert.equal(isNonblankAnswer('   \n'), false);
   assert.equal(isNonblankAnswer('0'), true);
   assert.equal(isNonblankAnswer(0), true);
+});
+
+test('legacy response migration retains the newest useful answer and falls back to newest blank', () => {
+  const rows = [
+    { _id: 'newest-blank', answer: '  ' },
+    { _id: 'older-useful', answer: 'saved answer' },
+  ];
+  assert.equal(selectLegacyResponseToKeep(rows)?._id, 'older-useful');
+  assert.equal(selectLegacyResponseToKeep([{ _id: 'blank', answer: '' }])?._id, 'blank');
 });
 
 test('legacy duplicate responses select the most recently saved row and ignore a latest blank', () => {

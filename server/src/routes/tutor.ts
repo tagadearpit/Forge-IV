@@ -6,7 +6,6 @@ import { z } from 'zod';
 import { asyncHandler, validateBody, ApiError } from '../middleware/error.js';
 import { requireAuth, AuthedRequest } from '../middleware/auth.js';
 import { answerQuestion, retrieveUnits } from '../services/rag.js';
-import { getAIProvider } from '../ai/provider.js';
 import { env } from '../config/env.js';
 import { logEvent } from '../services/events.js';
 import { User } from '../models/User.js';
@@ -15,8 +14,8 @@ import { ChatMessage } from '../models/ChatMessage.js';
 import { PdfReport } from '../models/PdfReport.js';
 import { signPdfDownloadToken, validatePdfDownloadToken } from '../services/pdfSecurity.js';
 import { promptHistory, selectPreviousAssistant } from '../services/chatMemory.js';
-import { createPdfRateLimiter } from '../middleware/pdfRateLimit.js';
-import { classifyAmbiguousPdfIntent, detectPdfIntent } from '../services/pdfIntent.js';
+import { createPdfRateLimiter, withPdfQuota } from '../middleware/pdfRateLimit.js';
+import { resolvePdfTurn } from '../services/pdfIntent.js';
 import { availablePdfMessageIds, createPdfReport, deletePdfReportsForMessages } from '../services/pdfReport.js';
 
 const router = Router();
@@ -37,38 +36,53 @@ const askSchema = z.object({
 const pdfSchema = z.object({ messageId: objectId.optional(), threadId: objectId.optional(), prompt: z.string().trim().min(1).max(12000).optional() })
   .refine((v) => [v.messageId, v.threadId, v.prompt].filter(Boolean).length === 1, 'Provide exactly one of messageId, threadId, or prompt.');
 
+type TutorPdfContent = {
+  pdfContent: string;
+  outsideKnowledge: string | null;
+  citations: any[];
+  groundingStatus: 'full' | 'partial' | 'outside_material';
+  responseAnswer: string;
+  responseExtra: Record<string, unknown>;
+};
+
 function plainPdfText(text: string) { return text.replace(/[{}]/g, '').replace(/\\([a-zA-Z]+)/g, '$1').replace(/\s+/g, ' ').trim(); }
 
 router.post('/pdf', requireAuth, validateBody(pdfSchema), asyncHandler(async (req: AuthedRequest, res) => {
   const body = req.body as z.infer<typeof pdfSchema>;
   const userId = req.userId!;
-  let answer = '';
-  let outsideKnowledge: string | null = null;
-  let citations: any[] = [];
-  let title = 'StudyMind Tutor Report';
-  if (body.messageId) {
-    const msg = await ChatMessage.findOne({ _id: body.messageId, userId, role: 'assistant', pdfClarification: { $ne: true } }).lean() as any;
-    if (!msg) throw new ApiError(404, 'MESSAGE_NOT_FOUND', 'That message does not exist.');
-    answer = msg.content; outsideKnowledge = msg.outsideKnowledge; citations = msg.citations ?? [];
-  } else if (body.threadId) {
-    const thread = await ChatThread.findOne({ _id: body.threadId, userId }).lean();
-    if (!thread) throw new ApiError(404, 'THREAD_NOT_FOUND', 'That chat does not exist.');
-    const msg = await ChatMessage.findOne({ threadId: thread._id, userId, role: 'assistant', pdfClarification: { $ne: true } }).sort({ createdAt: -1 }).lean() as any;
-    if (!msg) throw new ApiError(404, 'MESSAGE_NOT_FOUND', 'That chat has no tutor answer to export.');
-    title = thread.title || title; answer = msg.content; outsideKnowledge = msg.outsideKnowledge; citations = msg.citations ?? [];
-  } else if (body.prompt!.startsWith('STUDYMIND_EXPORT:')) {
-    const lines = body.prompt!.slice('STUDYMIND_EXPORT:'.length).split('\n');
-    title = plainPdfText(lines.shift()?.trim() || 'StudyMind Report').slice(0, 120);
-    answer = lines.join('\n').trim().slice(0, 10000);
-  } else {
-    const result = await answerQuestion(userId, body.prompt!, {});
-    answer = result.answer; outsideKnowledge = result.outsideKnowledge; citations = result.citations;
-  }
-  if (!answer.trim() && !outsideKnowledge?.trim()) {
-    throw new ApiError(422, 'PDF_CONTENT_EMPTY', 'There is no answer content to export. Ask a question or give me a topic first.');
-  }
-  if (!(await pdfRateLimiter.consume(req, res))) return;
-  const download = await createPdfReport({ userId, answer, outsideKnowledge, citations, title });
+  const prepared = await withPdfQuota(
+    () => pdfRateLimiter.consume(req, res),
+    async () => {
+      let answer = '';
+      let outsideKnowledge: string | null = null;
+      let citations: any[] = [];
+      let title = 'StudyMind Tutor Report';
+      if (body.messageId) {
+        const msg = await ChatMessage.findOne({ _id: body.messageId, userId, role: 'assistant', pdfClarification: { $ne: true } }).lean() as any;
+        if (!msg) throw new ApiError(404, 'MESSAGE_NOT_FOUND', 'That message does not exist.');
+        answer = msg.content; outsideKnowledge = msg.outsideKnowledge; citations = msg.citations ?? [];
+      } else if (body.threadId) {
+        const thread = await ChatThread.findOne({ _id: body.threadId, userId }).lean();
+        if (!thread) throw new ApiError(404, 'THREAD_NOT_FOUND', 'That chat does not exist.');
+        const msg = await ChatMessage.findOne({ threadId: thread._id, userId, role: 'assistant', pdfClarification: { $ne: true } }).sort({ createdAt: -1 }).lean() as any;
+        if (!msg) throw new ApiError(404, 'MESSAGE_NOT_FOUND', 'That chat has no tutor answer to export.');
+        title = thread.title || title; answer = msg.content; outsideKnowledge = msg.outsideKnowledge; citations = msg.citations ?? [];
+      } else if (body.prompt!.startsWith('STUDYMIND_EXPORT:')) {
+        const lines = body.prompt!.slice('STUDYMIND_EXPORT:'.length).split('\n');
+        title = plainPdfText(lines.shift()?.trim() || 'StudyMind Report').slice(0, 120);
+        answer = lines.join('\n').trim().slice(0, 10000);
+      } else {
+        const result = await answerQuestion(userId, body.prompt!, {});
+        answer = result.answer; outsideKnowledge = result.outsideKnowledge; citations = result.citations;
+      }
+      if (!answer.trim() && !outsideKnowledge?.trim()) {
+        throw new ApiError(422, 'PDF_CONTENT_EMPTY', 'There is no answer content to export. Ask a question or give me a topic first.');
+      }
+      return { answer, outsideKnowledge, citations, title };
+    }
+  );
+  if (!prepared.allowed) return;
+  const download = await createPdfReport({ userId, ...prepared.value });
   res.status(201).json(download);
 }));
 
@@ -148,21 +162,33 @@ router.post('/ask', requireAuth, askLimiter, validateBody(askSchema), asyncHandl
     answerStyle: prefs?.answerStyle === 'deep' ? 'deep' as const : 'quick' as const,
     studyLevel: prefs?.studyLevel ?? 'self-learner',
   };
-  let pdfIntent = detectPdfIntent(question);
-  if (thread.pendingPdf && pdfIntent.kind === 'none') {
-    // The previous tutor turn explicitly asked for PDF contents. Treat this
-    // reply as the requested topic, not as an unrelated normal tutor question.
-    pdfIntent = detectPdfIntent(`Create a PDF about ${question}`);
+  const pdfTurn = resolvePdfTurn(question, Boolean(thread.pendingPdf));
+  const effectiveQuestion = pdfTurn.effectiveQuestion;
+  let pdfIntent = pdfTurn.intent;
+  if (pdfTurn.cancelled) {
+    thread.pendingPdf = false;
+    thread.lastMessageAt = new Date();
+    await thread.save();
+    if (!effectiveQuestion.trim()) {
+      const acknowledgement = answerOptions.language === 'hi'
+        ? 'ठीक है, मैंने PDF का अनुरोध रद्द कर दिया है।'
+        : 'Okay, I’ve cancelled that PDF request.';
+      const assistantMessage = await ChatMessage.create({
+        userId, threadId: thread._id, role: 'assistant', content: acknowledgement,
+        citations: [], groundingStatus: 'partial', outsideKnowledge: null, scope, attachments: [],
+      });
+      return res.json({
+        answer: acknowledgement, citations: [], groundingStatus: 'partial', outsideKnowledge: null,
+        language: answerOptions.language, topSimilarity: 0, lexicalOverlap: 0,
+        audit: { citedRequested: 0, citedVerified: 0, stripped: 0, declined: false },
+        unsearchableCount: 0, usingSource: null, threadId: String(thread._id),
+        messageId: String(assistantMessage._id), userMessageId: String(userMessage._id),
+      });
+    }
   }
-  pdfIntent = await classifyAmbiguousPdfIntent(
-    pdfIntent,
-    pdfIntent.kind === 'ambiguous' && getAIProvider().name === 'gemini'
-      ? () => getAIProvider().generateJSON<{ makePdf: boolean; target?: 'previous' | 'new'; contentQuestion?: string | null }>({
-          prompt: `Decide whether this student message is asking to generate/export a PDF file, rather than asking about PDF as a topic. Return exactly JSON: {"makePdf":boolean,"target":"previous"|"new","contentQuestion":string|null}. Use target previous only for clear references to the preceding tutor answer. Message: ${JSON.stringify(question)}`,
-          temperature: 0, maxOutputTokens: 80,
-        })
-      : undefined
-  );
+  // Keep ambiguous requests in the clarification flow rather than calling an AI
+  // classifier before the PDF quota has been checked. This also avoids charging
+  // ordinary PDF-topic questions against the shared report limit.
 
   const clarifyPdf = async (message?: string) => {
     const clarification = message ?? (answerOptions.language === 'hi'
@@ -189,31 +215,40 @@ router.post('/ask', requireAuth, askLimiter, validateBody(askSchema), asyncHandl
   if (pdfIntent.kind === 'request' && pdfIntent.target === 'new' && !pdfIntent.contentQuestion) return clarifyPdf();
 
   const pdfRequested = pdfIntent.kind === 'request';
-
+  let preparedPdf: TutorPdfContent | null = null;
   if (pdfRequested) {
-    let pdfContent: string;
-    let outsideKnowledge: string | null;
-    let citations: any[];
-    let groundingStatus: 'full' | 'partial' | 'outside_material';
-    let responseAnswer: string;
-    let responseExtra: Record<string, unknown> = {};
-    if (pdfIntent.target === 'previous' && previousAssistant) {
-      pdfContent = previousAssistant.content;
-      outsideKnowledge = previousAssistant.outsideKnowledge ?? null;
-      citations = previousAssistant.citations ?? [];
-      groundingStatus = previousAssistant.groundingStatus ?? 'partial';
-      responseAnswer = 'I prepared a PDF of the previous tutor answer.';
-    } else {
-      const result = await answerQuestion(userId, pdfIntent.contentQuestion!, answerOptions);
-      pdfContent = result.answer || result.outsideKnowledge || '';
-      outsideKnowledge = result.outsideKnowledge;
-      citations = result.citations;
-      groundingStatus = result.groundingStatus;
-      responseAnswer = pdfContent;
-      responseExtra = result as unknown as Record<string, unknown>;
-    }
+    const quota = await withPdfQuota<TutorPdfContent>(
+      () => pdfRateLimiter.consume(req, res),
+      async () => {
+        if (pdfIntent.target === 'previous' && previousAssistant) {
+          return {
+            pdfContent: previousAssistant.content,
+            outsideKnowledge: previousAssistant.outsideKnowledge ?? null,
+            citations: previousAssistant.citations ?? [],
+            groundingStatus: previousAssistant.groundingStatus ?? 'partial',
+            responseAnswer: 'I prepared a PDF of the previous tutor answer.',
+            responseExtra: {},
+          };
+        }
+        const result = await answerQuestion(userId, pdfIntent.contentQuestion!, answerOptions);
+        const pdfContent = result.answer || result.outsideKnowledge || '';
+        return {
+          pdfContent,
+          outsideKnowledge: result.outsideKnowledge,
+          citations: result.citations,
+          groundingStatus: result.groundingStatus,
+          responseAnswer: pdfContent,
+          responseExtra: result as unknown as Record<string, unknown>,
+        };
+      }
+    );
+    if (!quota.allowed) return;
+    preparedPdf = quota.value;
+  }
+
+  if (pdfRequested && preparedPdf) {
+    const { pdfContent, outsideKnowledge, citations, groundingStatus, responseAnswer, responseExtra } = preparedPdf;
     if (!pdfContent.trim()) return clarifyPdf();
-    if (!(await pdfRateLimiter.consume(req, res))) return;
     const assistantMessage = await ChatMessage.create({
       userId, threadId: thread._id, role: 'assistant', content: responseAnswer,
       citations, groundingStatus, outsideKnowledge, scope, attachments: [],
@@ -246,9 +281,9 @@ router.post('/ask', requireAuth, askLimiter, validateBody(askSchema), asyncHandl
       pdfDownload: download.url,
     });
   }
-  const result = await answerQuestion(userId, question, answerOptions);
+  const result = await answerQuestion(userId, effectiveQuestion, answerOptions);
   if (includeContexts) {
-    const hits = await retrieveUnits(userId, { question, topK: env.RETRIEVAL_TOP_K, sourceIds: scope?.sourceIds, topicIds: scope?.topicIds });
+    const hits = await retrieveUnits(userId, { question: effectiveQuestion, topK: env.RETRIEVAL_TOP_K, sourceIds: scope?.sourceIds, topicIds: scope?.topicIds });
     result.retrievedContexts = hits.map((h) => ({ unitId: h.unitId, sourceTitle: h.sourceTitle, text: h.text, similarity: h.similarity, location: h.location }));
   }
   const assistantMessage = await ChatMessage.create({

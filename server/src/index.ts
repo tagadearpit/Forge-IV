@@ -5,12 +5,15 @@ import { createApp } from './app.js';
 import { activeSpace, groundingThresholds } from './utils/vectorSpace.js';
 import { resumeIngestionJobs } from './services/ingestion.js';
 import { cleanupExpiredPdfReports } from './services/pdfReport.js';
+import { migrateAssessmentResponseUniqueness } from './services/assessmentResponseMigration.js';
 
 async function main() {
   // Bind to 0.0.0.0 and process.env.PORT so Replit's Run button works with no
   // manual terminal steps.
   const db = await connectDb();
   console.log(`[db] connected (${db.mode}) ${db.uri}`);
+  const responseMigration = await migrateAssessmentResponseUniqueness();
+  console.log(`[db] assessment responses ready; removed ${responseMigration.duplicateRowsRemoved} legacy duplicate row(s)`);
   void resumeIngestionJobs().catch((err) => console.error('[ingest:resume] startup recovery failed', err));
   const cleanupPdfReports = () => void cleanupExpiredPdfReports().catch((err) => {
     console.error('[pdf] scheduled expiry cleanup failed', { name: (err as Error)?.name ?? 'Error' });

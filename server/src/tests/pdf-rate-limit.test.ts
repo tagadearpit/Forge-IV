@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { createPdfRateLimiter } from '../middleware/pdfRateLimit.js';
+import { createPdfRateLimiter, withPdfQuota } from '../middleware/pdfRateLimit.js';
 
 class MockResponse extends EventEmitter {
   statusCode = 200;
@@ -14,7 +14,7 @@ class MockResponse extends EventEmitter {
 }
 
 function request(path: string) {
-  return { ip: '127.0.0.1', method: 'POST', originalUrl: path, url: path, headers: {}, socket: { remoteAddress: '127.0.0.1' } } as any;
+  return { ip: '127.0.0.1', method: 'POST', originalUrl: path, url: path, headers: {}, app: { get: () => false }, socket: { remoteAddress: '127.0.0.1' } } as any;
 }
 
 test('one five-per-minute quota covers explicit and automatic PDFs but not normal tutor questions', async () => {
@@ -44,4 +44,12 @@ test('one five-per-minute quota covers explicit and automatic PDFs but not norma
   assert.deepEqual(limited.body, {
     error: { code: 'RATE_LIMITED', message: 'PDF generation is limited to five reports per minute.' },
   });
+
+  let aiContentGenerationCalls = 0;
+  const exhaustedWork = await withPdfQuota(async () => false, async () => {
+    aiContentGenerationCalls++;
+    return 'should never run';
+  });
+  assert.deepEqual(exhaustedWork, { allowed: false });
+  assert.equal(aiContentGenerationCalls, 0, 'quota exhaustion prevents answer/content generation');
 });

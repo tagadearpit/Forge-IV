@@ -11,12 +11,11 @@ const ResponseSchema = new Schema(
     topicId: { type: Schema.Types.ObjectId, ref: 'Topic', default: null },
     selectedMisconception: { type: String, default: null },
   },
-  { timestamps: true }
+  { timestamps: true, autoIndex: false }
 );
 
 export type ResponseDoc = InferSchemaType<typeof ResponseSchema>;
-// Retries update a response through the service upsert. Do not add a unique index
-// here: historical deployments may already contain duplicate rows. Reads collapse
-// those rows to the most recently saved answer before scoring/reporting.
-ResponseSchema.index({ userId: 1, assessmentId: 1, questionId: 1 });
+// The app explicitly migrates/deduplicates legacy rows before creating indexes.
+// Automatic index creation is disabled above so a unique build can never race the migration.
+ResponseSchema.index({ userId: 1, assessmentId: 1, questionId: 1 }, { unique: true });
 export const Response = mongoose.model('Response', ResponseSchema);

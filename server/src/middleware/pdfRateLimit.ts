@@ -33,3 +33,14 @@ export function createPdfRateLimiter(options: { windowMs?: number; limit?: numbe
 
   return { middleware, consume };
 }
+
+export type PdfQuotaResult<T> = { allowed: false } | { allowed: true; value: T };
+
+/** Do not invoke expensive PDF preparation or AI work when the shared quota is exhausted. */
+export async function withPdfQuota<T>(
+  consume: () => Promise<boolean>,
+  work: () => Promise<T>
+): Promise<PdfQuotaResult<T>> {
+  if (!(await consume())) return { allowed: false };
+  return { allowed: true, value: await work() };
+}

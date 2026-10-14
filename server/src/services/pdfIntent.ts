@@ -10,6 +10,29 @@ export interface PdfIntentDecision {
   contentQuestion?: string | null;
 }
 
+export interface PdfTurnResolution {
+  intent: PdfIntent;
+  effectiveQuestion: string;
+  cancelled: boolean;
+}
+
+/** Pull a standalone cancellation or a cancellation prefix off a pending-PDF reply. */
+export function extractPdfCancellation(question: string): string | null {
+  const match = question.trim().match(/^(?:please\s+)?(?:cancel(?:\s+(?:that|it|the\s+pdf|the\s+request))?|never\s+mind|nevermind|forget\s+(?:the\s+pdf|that|it|the\s+request))(?:\s*(?:[,;:.!?]+\s*|\s+then\s+|\s+and\s+)?)?([\s\S]*)$/i);
+  return match ? match[1].trim() : null;
+}
+
+/** Resolve a reply to an outstanding clarification, preserving explicit new PDF requests. */
+export function resolvePdfTurn(question: string, pendingPdf: boolean): PdfTurnResolution {
+  const remainder = pendingPdf ? extractPdfCancellation(question) : null;
+  const effectiveQuestion = remainder === null ? question : remainder;
+  let intent = detectPdfIntent(effectiveQuestion);
+  if (pendingPdf && remainder === null && intent.kind === 'none') {
+    intent = detectPdfIntent(`Create a PDF about ${question}`);
+  }
+  return { intent, effectiveQuestion, cancelled: remainder !== null };
+}
+
 const PDF_ACTION = /^(?:(?:now|please)\s+)*(?:(?:can|could|would)\s+you\s+)?(?:(?:i\s+(?:need|want)\s+(?:you\s+to\s+)?)?)(?:make|create|generate|prepare|export|save|download|turn|convert|give(?:\s+me)?)\b/i;
 const PDF_AS_VERB = /^(?:(?:please)\s+)?(?:(?:can|could|would)\s+you\s+)?pdf\s+(?:this|that|it|the\s+(?:previous|last)\s+answer)\b/i;
 const PREVIOUS_REFERENCE = /\b(?:this|that|it|above|previous|preceding|last\s+answer|the\s+answer\s+above|that\s+answer)\b/i;

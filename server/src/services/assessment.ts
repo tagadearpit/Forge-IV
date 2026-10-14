@@ -727,11 +727,23 @@ export async function submitAnswer(
   if (!question) return null;
 
   const { correct } = gradeAnswer(question, answer);
-  const saved = await Response.updateOne(
-    { userId, assessmentId, questionId },
-    { $set: { answer, correct, timeSpentSec, topicId: question.topicId }, $setOnInsert: { userId, assessmentId, questionId } },
-    { upsert: true }
-  );
+  let saved;
+  try {
+    saved = await Response.updateOne(
+      { userId, assessmentId, questionId },
+      { $set: { answer, correct, timeSpentSec, topicId: question.topicId }, $setOnInsert: { userId, assessmentId, questionId } },
+      { upsert: true }
+    );
+  } catch (err) {
+    // Concurrent upserts can both observe no row; the unique index allows only
+    // one insert. The loser updates that now-existing response without upsert,
+    // and must not advance mastery a second time.
+    if ((err as { code?: number }).code !== 11000) throw err;
+    saved = await Response.updateOne(
+      { userId, assessmentId, questionId },
+      { $set: { answer, correct, timeSpentSec, topicId: question.topicId } }
+    );
+  }
 
   // Mastery advances once per question response, not on client retries or
   // repeated finalization saves. Answer edits still update the persisted grade.
