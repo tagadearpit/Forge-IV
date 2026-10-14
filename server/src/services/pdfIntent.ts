@@ -13,14 +13,18 @@ export function detectPdfIntent(question: string): PdfIntent {
   const ofThisOrThat = /\bpdf\s+(?:of|for)\s+(?:this|that|the\s+(?:previous|last)\s+answer|the\s+answer\s+above)\b/i.test(text);
   const convertMatch = /\b(?:turn|convert)\s+(.+?)\s+into\s+(?:a\s+)?pdf\b/i.exec(text);
   const asPdfMatch = /\b(?:save|export|download|turn|convert)\s+(.+?)\s+(?:as|into)\s+(?:a\s+)?pdf\b/i.exec(text);
+  const beforePdfMatch = /\b(?:make|create|generate|prepare)\s+(?:me\s+)?(?:a\s+)?(.+?)\s+(?:as\s+)?(?:a\s+)?pdf\b/i.exec(text);
   const actionBeforePdf = /\b(?:make|create|generate|export|save|download|give|prepare)\b[\s\S]{0,80}\bpdf\b/i.test(text);
   const pdfOfTarget = /\bpdf\s+(?:of|for)\s+(?:this|that|my\s+notes|my\s+upload|my\s+material|the\s+notes|the\s+upload)\b/i.test(text);
-  const clearlyRequested = ofThisOrThat || Boolean(convertMatch || asPdfMatch) || actionBeforePdf || pdfOfTarget;
+  const clearlyRequested = ofThisOrThat || Boolean(convertMatch || asPdfMatch || beforePdfMatch) || actionBeforePdf || pdfOfTarget;
 
   if (clearlyRequested) {
-    const targetText = convertMatch?.[1] ?? asPdfMatch?.[1] ?? extractTail(text);
-    const previous = ofThisOrThat || refersToPrevious(targetText);
-    const content = previous ? undefined : contentQuestion(targetText);
+    const targetText = convertMatch?.[1] ?? asPdfMatch?.[1] ?? (extractTail(text) || beforePdfMatch?.[1] || '');
+    const normalizedTarget = targetText.trim().replace(/^[,.:;!?\s]+|[,.:;!?\s]+$/g, '');
+    const usefulTarget = normalizedTarget.replace(/^(?:a|an|the|me|you)\s*$/i, '');
+    if (!usefulTarget && !pdfOfTarget && !ofThisOrThat) return { kind: 'ambiguous', target: refersToPrevious(text) ? 'previous' : 'new' };
+    const previous = ofThisOrThat || refersToPrevious(normalizedTarget);
+    const content = previous ? undefined : contentQuestion(normalizedTarget);
     return { kind: 'request', target: previous ? 'previous' : 'new', ...(content ? { contentQuestion: content } : {}) };
   }
 

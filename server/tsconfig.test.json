@@ -3,7 +3,7 @@
   "compilerOptions": {
     "types": ["node"],
     "rootDir": "src",
-    "outDir": "/tmp/studymind-server/test-dist",
+    "outDir": ".test-dist",
     "incremental": false
   },
   "include": ["src/**/*.ts"],

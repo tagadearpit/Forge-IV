@@ -7,7 +7,8 @@ export default defineConfig({
   reporter: 'list',
   timeout: 90_000,
   use: {
-    baseURL: process.env.STUDYMIND_BASE_URL ?? 'https://studymind-forgeiv.vercel.app',
+    // Local by default; set STUDYMIND_BASE_URL explicitly for the deployed smoke suite.
+    baseURL: process.env.STUDYMIND_BASE_URL ?? 'http://127.0.0.1:3000',
     headless: true,
     trace: 'retain-on-failure',
   },

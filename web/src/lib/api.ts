@@ -166,6 +166,7 @@ export interface TutorAnswer {
   usingSource?: { id: string; title: string } | null;
   threadId?: string;
   messageId?: string;
+  attachment?: { type: 'pdf'; messageId: string; url?: string };
 }
 
 export interface TopicNode {
@@ -249,6 +250,12 @@ export const api = {
     const token = getToken();
     const res = await fetch(`${API_URL}${url}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
     if (!res.ok) throw new Error('Could not download the PDF report.');
+    return res.blob();
+  },
+  downloadPdfAttachment: async (messageId: string): Promise<Blob> => {
+    const token = getToken();
+    const res = await fetch(`${API_URL}/api/tutor/pdf/messages/${encodeURIComponent(messageId)}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    if (!res.ok) throw new Error('Could not download the PDF attachment.');
     return res.blob();
   },
   chatHistory: () => apiFetch<{ threads: Array<{ id: string; title: string; scope: any; lastMessageAt: string }> }>('/tutor/threads'),

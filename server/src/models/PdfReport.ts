@@ -3,6 +3,7 @@ import mongoose, { Schema } from 'mongoose';
 const PdfReportSchema = new Schema({
   userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   fileId: { type: String, required: true, unique: true },
+  messageId: { type: Schema.Types.ObjectId, ref: 'ChatMessage', default: null, index: true },
   createdAt: { type: Date, default: Date.now },
   expiresAt: { type: Date, required: true },
 }, { timestamps: false });

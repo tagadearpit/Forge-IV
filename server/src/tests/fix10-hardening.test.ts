@@ -9,13 +9,15 @@ import path from 'node:path';
  * combinations, because the check throws at module load.
  */
 describe('production JWT secret hardening', () => {
-  const envFile = path.resolve(__dirname, '../config/env.ts');
+  // The test runner compiles to .test-dist beside the local server node_modules,
+  // so the production environment guard can be exercised without a TS loader.
+  const envFile = path.resolve(__dirname, '../config/env.js');
 
   function boot(jwtSecret: string, nodeEnv: string): { ok: boolean; message: string } {
     try {
       const out = execFileSync(
         process.execPath,
-        ['--import', 'tsx', '-e', `require(${JSON.stringify(envFile)}); console.log('BOOTED');`],
+        ['-e', `require(${JSON.stringify(envFile)}); console.log('BOOTED');`],
         {
           env: { ...process.env, NODE_ENV: nodeEnv, JWT_SECRET: jwtSecret },
           encoding: 'utf8',

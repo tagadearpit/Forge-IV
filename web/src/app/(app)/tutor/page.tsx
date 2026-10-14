@@ -152,7 +152,7 @@ export default function TutorPage() {
       setScope(sourceIds.length ? { label: `source:${sourceIds[0]}`, sourceIds, sectionTitle: sc.sectionTitle ?? undefined } : topicIds.length ? { label: `topic:${topicIds[0]}`, topicIds } : { label: 'All sources' });
       setMessages((data.messages ?? []).map((m: any) => ({
         id: m.id, role: m.role, content: m.content,
-        ...(m.role === 'assistant' ? { result: { answer: m.content, citations: m.citations ?? [], groundingStatus: m.groundingStatus ?? 'partial', outsideKnowledge: m.outsideKnowledge ?? null, language: 'en', topSimilarity: 0, lexicalOverlap: 0, audit: { citedRequested: 0, citedVerified: 0, stripped: 0, declined: false }, unsearchableCount: 0, usingSource: null, messageId: m.id } as TutorAnswer } : {}),
+        ...(m.role === 'assistant' ? { result: { answer: m.content, citations: m.citations ?? [], groundingStatus: m.groundingStatus ?? 'partial', outsideKnowledge: m.outsideKnowledge ?? null, language: 'en', topSimilarity: 0, lexicalOverlap: 0, audit: { citedRequested: 0, citedVerified: 0, stripped: 0, declined: false }, unsearchableCount: 0, usingSource: null, messageId: m.id, ...(m.attachments?.find((a: any) => a.type === 'pdf') ? { attachment: { type: 'pdf' as const, messageId: String(m.attachments.find((a: any) => a.type === 'pdf').messageId) } } : {}) } as TutorAnswer } : {}),
       })));
     }).catch(() => {});
   }, []);
@@ -195,6 +195,14 @@ export default function TutorPage() {
           ...m,
           { id: result.messageId ?? `a${Date.now()}`, role: 'assistant', content: result.answer || result.outsideKnowledge || '', result },
         ]);
+        if (result.attachment?.type === 'pdf') {
+          try {
+            const blob = await api.downloadPdfAttachment(result.attachment.messageId);
+            const href = URL.createObjectURL(blob);
+            const anchor = document.createElement('a'); anchor.href = href; anchor.download = 'studymind-tutor-report.pdf'; anchor.click();
+            window.setTimeout(() => URL.revokeObjectURL(href), 1000);
+          } catch { toast.push('warning', 'Your PDF is attached to this message; use its download chip to retry.'); }
+        }
       } catch (err: any) {
         toast.push('error', err?.message ?? 'Could not reach the tutor.');
         setMessages((m) => [
@@ -235,7 +243,7 @@ export default function TutorPage() {
       <aside className="hidden w-56 shrink-0 flex-col gap-3 overflow-y-auto rounded-2xl border border-[color:rgb(var(--border))] bg-[color:rgb(var(--card))] p-3 md:flex">
         <button type="button" className="btn-secondary w-full px-3 py-2 text-sm" onClick={() => { setThreadId(null); setMessages([]); setScope({ label: 'All sources' }); }}>New chat</button>
         <h2 className="px-2 text-xs font-semibold uppercase tracking-wide text-muted">Recent chats</h2>
-        {threads.map((t) => <button key={t.id} type="button" className={cn('w-full truncate rounded-lg px-3 py-2 text-left text-sm', threadId === t.id ? 'bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300' : 'hover:bg-[color:rgb(var(--surface))]')} onClick={async () => { try { const data = await api.chatThread(t.id); setThreadId(t.id); const sc = data.thread?.scope ?? {}; const sourceIds = (sc.sourceIds ?? []).map(String); const topicIds = (sc.topicIds ?? []).map(String); setScope(sourceIds.length ? { label: `source:${sourceIds[0]}`, sourceIds, sectionTitle: sc.sectionTitle ?? undefined } : topicIds.length ? { label: `topic:${topicIds[0]}`, topicIds } : { label: 'All sources' }); setMessages((data.messages ?? []).map((m: any) => ({ id: m.id, role: m.role, content: m.content, ...(m.role === 'assistant' ? { result: { answer: m.content, citations: m.citations ?? [], groundingStatus: m.groundingStatus ?? 'partial', outsideKnowledge: m.outsideKnowledge ?? null, language: 'en', topSimilarity: 0, lexicalOverlap: 0, audit: { citedRequested: 0, citedVerified: 0, stripped: 0, declined: false }, unsearchableCount: 0, usingSource: null, messageId: m.id } as TutorAnswer } : {}) }))); } catch {} }}>{t.title}</button>)}
+        {threads.map((t) => <button key={t.id} type="button" className={cn('w-full truncate rounded-lg px-3 py-2 text-left text-sm', threadId === t.id ? 'bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300' : 'hover:bg-[color:rgb(var(--surface))]')} onClick={async () => { try { const data = await api.chatThread(t.id); setThreadId(t.id); const sc = data.thread?.scope ?? {}; const sourceIds = (sc.sourceIds ?? []).map(String); const topicIds = (sc.topicIds ?? []).map(String); setScope(sourceIds.length ? { label: `source:${sourceIds[0]}`, sourceIds, sectionTitle: sc.sectionTitle ?? undefined } : topicIds.length ? { label: `topic:${topicIds[0]}`, topicIds } : { label: 'All sources' }); setMessages((data.messages ?? []).map((m: any) => ({ id: m.id, role: m.role, content: m.content, ...(m.role === 'assistant' ? { result: { answer: m.content, citations: m.citations ?? [], groundingStatus: m.groundingStatus ?? 'partial', outsideKnowledge: m.outsideKnowledge ?? null, language: 'en', topSimilarity: 0, lexicalOverlap: 0, audit: { citedRequested: 0, citedVerified: 0, stripped: 0, declined: false }, unsearchableCount: 0, usingSource: null, messageId: m.id, ...(m.attachments?.find((a: any) => a.type === 'pdf') ? { attachment: { type: 'pdf' as const, messageId: String(m.attachments.find((a: any) => a.type === 'pdf').messageId) } } : {}) } as TutorAnswer } : {}) }))); } catch {} }}>{t.title}</button>)}
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
       <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -523,6 +531,12 @@ function AnswerBlock({
         <button type="button" onClick={() => void downloadPdf()} disabled={pdfBusy} className="chip border border-[color:rgb(var(--border))] hover:bg-[color:rgb(var(--surface))]" aria-label="Download answer as PDF">
           <Download className="h-3 w-3" aria-hidden /> {pdfBusy ? 'Preparing PDF…' : 'Download as PDF'}
         </button>
+        {result.attachment?.type === 'pdf' && <button type="button" onClick={async () => {
+          try { const blob = await api.downloadPdfAttachment(result.attachment!.messageId); const href = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = href; a.download = 'studymind-tutor-report.pdf'; a.click(); window.setTimeout(() => URL.revokeObjectURL(href), 1000); }
+          catch { setPdfError('PDF attachment is no longer available.'); }
+        }} className="chip border border-brand-300 bg-brand-50 text-brand-700 hover:bg-brand-100 dark:bg-brand-950 dark:text-brand-300" aria-label="Download attached PDF">
+          <Download className="h-3 w-3" aria-hidden /> Download attached PDF
+        </button>}
       </div>
       {pdfError && <p role="alert" className="text-xs text-red-600">{pdfError}</p>}
 

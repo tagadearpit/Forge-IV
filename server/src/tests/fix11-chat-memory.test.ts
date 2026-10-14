@@ -25,7 +25,8 @@ test('chat threads and messages are isolated by user and can be restored with sc
       User.create({ name: 'Chat Owner B', email: `${dbName}b@test.local`, phone: '+919000000092', passwordHash: 'x' }),
     ]);
     const thread = await ChatThread.create({ userId: a._id, title: 'Section 2', scope: { sourceIds: [new mongoose.Types.ObjectId()], sectionTitle: '2 Introduction' } });
-    const message = await ChatMessage.create({ userId: a._id, threadId: thread._id, role: 'assistant', content: 'Page-cited explanation', citations: [{ label: 'Book p.2' }] });
+    const messageId = new mongoose.Types.ObjectId();
+    const message = await ChatMessage.create({ _id: messageId, userId: a._id, threadId: thread._id, role: 'assistant', content: 'Page-cited explanation', citations: [{ label: 'Book p.2' }], attachments: [{ type: 'pdf', messageId }] });
     assert.equal(await ChatThread.findOne({ _id: thread._id, userId: b._id }), null);
     assert.equal(await ChatMessage.findOne({ _id: message._id, userId: b._id }), null);
     const restored = await ChatThread.findOne({ _id: thread._id, userId: a._id }).lean() as any;
@@ -33,6 +34,8 @@ test('chat threads and messages are isolated by user and can be restored with sc
     assert.equal(restored?.title, 'Section 2');
     assert.equal(restored?.scope?.sectionTitle, '2 Introduction');
     assert.equal(restoredMessages[0]?.content, 'Page-cited explanation');
+    assert.equal((restoredMessages[0] as any)?.attachments?.[0]?.type, 'pdf');
+    assert.equal(String((restoredMessages[0] as any)?.attachments?.[0]?.messageId), String(message._id));
   } finally {
     await mongoose.connection.dropDatabase();
     await disconnectTestDatabase();

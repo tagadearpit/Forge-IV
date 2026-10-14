@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Save, Globe, Target, Trash2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { Button, Alert, useToast } from '@/components/ui';
+import { Button, useToast } from '@/components/ui';
 
 export default function SettingsPage() {
   const { user, updateProfile, logout } = useAuth();
@@ -34,7 +34,12 @@ export default function SettingsPage() {
   const deleteData = async () => {
     if (deleteConfirm !== 'DELETE') return;
     setDeleting(true); setDeleteError('');
-    try { await api.deleteMyData(); setDeleteSuccess(true); toast.push('success', 'Your account and data were deleted.'); logout(); }
+    try {
+      await api.deleteMyData();
+      setDeleteSuccess(true); setDeleteOpen(false);
+      toast.push('success', 'Your account and data were deleted.');
+      window.setTimeout(() => logout(), 1500);
+    }
     catch (err: any) { setDeleteError(err?.message ?? 'Could not delete your data. Please try again.'); }
     finally { setDeleting(false); }
   };
