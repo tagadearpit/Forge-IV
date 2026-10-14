@@ -14,7 +14,7 @@ import { ChatThread } from '../models/ChatThread.js';
 import { ChatMessage } from '../models/ChatMessage.js';
 import { PdfReport } from '../models/PdfReport.js';
 import { signPdfDownloadToken, validatePdfDownloadToken } from '../services/pdfSecurity.js';
-import { promptHistory } from '../services/chatMemory.js';
+import { promptHistory, selectPreviousAssistant } from '../services/chatMemory.js';
 import { detectPdfIntent } from '../services/pdfIntent.js';
 import { createPdfReport } from '../services/pdfReport.js';
 
@@ -29,7 +29,7 @@ const askLimiter = rateLimit({
 });
 const askSchema = z.object({
   question: z.string().trim().min(1, 'Ask a question.').max(2000, 'That question is too long.'),
-  threadId: objectId.optional(), scope: scopeSchema, language: z.enum(['en', 'hi']).optional(), includeContexts: z.boolean().optional(),
+  threadId: objectId.optional(), previousMessageId: objectId.optional(), scope: scopeSchema, language: z.enum(['en', 'hi']).optional(), includeContexts: z.boolean().optional(),
 });
 
 const pdfSchema = z.object({ messageId: objectId.optional(), threadId: objectId.optional(), prompt: z.string().trim().min(1).max(12000).optional() })
@@ -93,10 +93,18 @@ router.get('/pdf/messages/:messageId', requireAuth, asyncHandler(async (req: Aut
 }));
 
 router.post('/ask', requireAuth, askLimiter, validateBody(askSchema), asyncHandler(async (req: AuthedRequest, res) => {
-  const { question, threadId, scope: requestedScope, language, includeContexts } = req.body as z.infer<typeof askSchema>;
+  const { question, threadId, previousMessageId, scope: requestedScope, language, includeContexts } = req.body as z.infer<typeof askSchema>;
   const userId = req.userId!;
-  let thread = threadId ? await ChatThread.findOne({ _id: threadId, userId }) : null;
-  if (threadId && !thread) throw new ApiError(404, 'THREAD_NOT_FOUND', 'That chat does not exist.');
+  const requestedPreviousAssistant = previousMessageId
+    ? await ChatMessage.findOne({ _id: previousMessageId, userId, role: 'assistant' }).lean() as any
+    : null;
+  if (previousMessageId && !requestedPreviousAssistant) throw new ApiError(404, 'MESSAGE_NOT_FOUND', 'That tutor answer does not exist.');
+
+  let thread = requestedPreviousAssistant
+    ? await ChatThread.findOne({ _id: requestedPreviousAssistant.threadId, userId })
+    : threadId ? await ChatThread.findOne({ _id: threadId, userId }) : null;
+  if (threadId && !thread && !requestedPreviousAssistant) throw new ApiError(404, 'THREAD_NOT_FOUND', 'That chat does not exist.');
+  if (requestedPreviousAssistant && !thread) throw new ApiError(404, 'THREAD_NOT_FOUND', 'That chat does not exist.');
   if (!thread) thread = await ChatThread.create({ userId, title: question.slice(0, 80), scope: requestedScope ?? {} });
   let scope = requestedScope ?? { sourceIds: (thread.scope as any)?.sourceIds?.map(String), topicIds: (thread.scope as any)?.topicIds?.map(String), sectionTitle: (thread.scope as any)?.sectionTitle ?? undefined };
   thread.scope = scope as never;
@@ -117,7 +125,7 @@ router.post('/ask', requireAuth, askLimiter, validateBody(askSchema), asyncHandl
     answerStyle: prefs?.answerStyle === 'deep' ? 'deep' as const : 'quick' as const,
     studyLevel: prefs?.studyLevel ?? 'self-learner',
   };
-  const previousAssistant = [...priorRows].reverse().find((row: any) => row.role === 'assistant') as any;
+  const previousAssistant = selectPreviousAssistant(priorRows as any[], requestedPreviousAssistant as any) as any;
   let pdfIntent = detectPdfIntent(question);
   if (pdfIntent.kind === 'ambiguous' && getAIProvider().name === 'gemini') {
     try {

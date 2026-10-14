@@ -13,3 +13,8 @@ test('leaves vague PDF requests for an optional classifier and resolves pronouns
   assert.deepEqual(detectPdfIntent('Could you make a PDF?'), { kind: 'ambiguous', target: 'new' });
   assert.deepEqual(detectPdfIntent('Can you PDF this?'), { kind: 'ambiguous', target: 'previous' });
 });
+
+test('recognizes the user’s tutor-chat PDF requests as referring to the visible previous answer', () => {
+  assert.deepEqual(detectPdfIntent('Now generate a pdf for that kind of information'), { kind: 'request', target: 'previous' });
+  assert.deepEqual(detectPdfIntent('make a pdf for that information'), { kind: 'request', target: 'previous' });
+});

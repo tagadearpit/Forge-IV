@@ -179,9 +179,11 @@ export default function TutorPage() {
       setMessages((m) => [...m, userMsg]);
 
       try {
+        const previousMessageId = [...messages].reverse().find((m) => m.role === 'assistant' && m.result?.messageId)?.result?.messageId;
         const result = await api.ask({
           question: q,
           ...(threadId ? { threadId } : {}),
+          ...(previousMessageId ? { previousMessageId } : {}),
           language,
           ...((scope.sourceIds || scope.topicIds || scope.sectionTitle || threadId) ? { scope: {
             ...(scope.sourceIds ? { sourceIds: scope.sourceIds } : {}),
@@ -211,14 +213,14 @@ export default function TutorPage() {
             id: `e${Date.now()}`,
             role: 'assistant',
             content:
-              'Something went wrong reaching the tutor. Your question was not lost — try again in a moment.',
+              err?.message ?? 'Something went wrong reaching the tutor. Your question was not lost — try again in a moment.',
           },
         ]);
       } finally {
         setAsking(false);
       }
     },
-    [asking, language, scope, toast, threadId, threads]
+    [asking, language, messages, scope, toast, threadId, threads]
   );
 
   const speak = (text: string) => {
@@ -488,7 +490,8 @@ function AnswerBlock({
     setPdfBusy(true); setPdfError('');
     try {
       const blob = await api.generatePdf(result.messageId ? { messageId: result.messageId } : threadId ? { threadId } : { prompt: result.answer });
-      const href = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = href; a.download = 'studymind-tutor-report.pdf'; a.click(); URL.revokeObjectURL(href);
+      const href = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = href; a.download = 'studymind-tutor-report.pdf'; document.body.appendChild(a); a.click(); a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(href), 1000);
     } catch { setPdfError('PDF download failed. Please try again.'); } finally { setPdfBusy(false); }
   };
   const outside = result.groundingStatus === 'outside_material';

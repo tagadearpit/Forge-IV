@@ -244,7 +244,7 @@ export const api = {
 
   topics: () => apiFetch<{ topics: TopicNode[]; flat: TopicNode[] }>('/topics'),
 
-  ask: (body: { question: string; threadId?: string; language?: 'en' | 'hi'; scope?: { sourceIds?: string[]; topicIds?: string[]; sectionTitle?: string } }) =>
+  ask: (body: { question: string; threadId?: string; previousMessageId?: string; language?: 'en' | 'hi'; scope?: { sourceIds?: string[]; topicIds?: string[]; sectionTitle?: string } }) =>
     apiFetch<TutorAnswer>('/tutor/ask', { method: 'POST', body: JSON.stringify(body) }),
   generatePdf: async (body: { messageId?: string; threadId?: string; prompt?: string }) => {
     const { url } = await apiFetch<{ url: string }>('/tutor/pdf', { method: 'POST', body: JSON.stringify(body) });
