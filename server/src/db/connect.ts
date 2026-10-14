@@ -13,7 +13,7 @@ let memoryServer: { stop: () => Promise<boolean> } | null = null;
 export function assertPersistentDatabaseConfig(isProduction: boolean, mongoUri: string): void {
   if (isProduction && !mongoUri.trim()) {
     throw new Error(
-      'MONGODB_URI is required in production. Refusing to use in-memory storage because accounts and study data would be lost on restart.'
+      'MONGODB_URI (or MONGODB_URL) is required in production. Refusing to use in-memory storage because accounts and study data would be lost on restart.'
     );
   }
 }

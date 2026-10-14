@@ -45,6 +45,9 @@ function resolveUploadDir(): string {
 }
 
 const NODE_ENV = str('NODE_ENV', 'development');
+// Keep MONGODB_URI as the canonical name, but accept MONGODB_URL for existing
+// Render environments that were configured with that variable name.
+const mongoUri = str('MONGODB_URI') || str('MONGODB_URL');
 const geminiKey = str('GEMINI_API_KEY');
 const forced = str('AI_PROVIDER').toLowerCase();
 
@@ -67,7 +70,7 @@ export const env = {
   PORT: num('PORT', 3001),
   CLIENT_ORIGIN: str('CLIENT_ORIGIN', 'http://localhost:3000'),
 
-  MONGODB_URI: str('MONGODB_URI'),
+  MONGODB_URI: mongoUri,
   MONGODB_DB: str('MONGODB_DB', 'studymind'),
 
   JWT_SECRET: str('JWT_SECRET', 'dev-only-insecure-secret-change-me'),

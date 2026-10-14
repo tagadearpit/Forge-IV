@@ -59,8 +59,30 @@ describe('production JWT secret hardening', () => {
 });
 
 describe('production database persistence', () => {
+  test('accepts MONGODB_URL as an alias and prefers MONGODB_URI', () => {
+    const envFile = path.resolve(__dirname, '../config/env.js');
+    const matchesExpectedUri = (uri: string, url: string, expected: string): boolean => {
+      const script = `const { env } = require(${JSON.stringify(envFile)}); console.log(env.MONGODB_URI === process.env.EXPECTED_MONGODB_URI ? 'MATCH' : 'NO_MATCH');`;
+      const output = execFileSync(process.execPath, ['-e', script], {
+        env: {
+          ...process.env,
+          NODE_ENV: 'development',
+          MONGODB_URI: uri,
+          MONGODB_URL: url,
+          EXPECTED_MONGODB_URI: expected,
+        },
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      return output.trim() === 'MATCH';
+    };
+
+    assert.equal(matchesExpectedUri('', 'mongodb://alias-test', 'mongodb://alias-test'), true);
+    assert.equal(matchesExpectedUri('mongodb://primary-test', 'mongodb://alias-test', 'mongodb://primary-test'), true);
+  });
+
   test('refuses in-memory storage in production', () => {
-    assert.throws(() => assertPersistentDatabaseConfig(true, ''), /MONGODB_URI is required in production/);
+    assert.throws(() => assertPersistentDatabaseConfig(true, ''), /MONGODB_URI .*required in production/);
   });
 
   test('keeps the in-memory database available for local development', () => {
