@@ -15,11 +15,12 @@ import { ChatMessage } from '../models/ChatMessage.js';
 import { PdfReport } from '../models/PdfReport.js';
 import { signPdfDownloadToken, validatePdfDownloadToken } from '../services/pdfSecurity.js';
 import { promptHistory, selectPreviousAssistant } from '../services/chatMemory.js';
-import { detectPdfIntent } from '../services/pdfIntent.js';
-import { createPdfReport } from '../services/pdfReport.js';
+import { createPdfRateLimiter } from '../middleware/pdfRateLimit.js';
+import { classifyAmbiguousPdfIntent, detectPdfIntent } from '../services/pdfIntent.js';
+import { availablePdfMessageIds, createPdfReport, deletePdfReportsForMessages } from '../services/pdfReport.js';
 
 const router = Router();
-const pdfLimiter = rateLimit({ windowMs: 60_000, limit: 5, standardHeaders: true, legacyHeaders: false, handler: (_req, res) => res.status(429).json({ error: { code: 'RATE_LIMITED', message: 'PDF generation is limited to five reports per minute.' } }) });
+const pdfRateLimiter = createPdfRateLimiter();
 const objectId = z.string().regex(/^[a-f\d]{24}$/i, 'Invalid identifier.');
 const ids = z.array(objectId).max(30).optional();
 const scopeSchema = z.object({ sourceIds: ids, topicIds: ids, sectionTitle: z.string().trim().min(1).max(160).optional() }).optional();
@@ -27,6 +28,7 @@ const askLimiter = rateLimit({
   windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false,
   handler: (_req, res) => res.status(429).json({ error: { code: 'RATE_LIMITED', message: 'Too many questions at once. Slow down a moment.' } }),
 });
+
 const askSchema = z.object({
   question: z.string().trim().min(1, 'Ask a question.').max(2000, 'That question is too long.'),
   threadId: objectId.optional(), previousMessageId: objectId.optional(), scope: scopeSchema, language: z.enum(['en', 'hi']).optional(), includeContexts: z.boolean().optional(),
@@ -37,7 +39,7 @@ const pdfSchema = z.object({ messageId: objectId.optional(), threadId: objectId.
 
 function plainPdfText(text: string) { return text.replace(/[{}]/g, '').replace(/\\([a-zA-Z]+)/g, '$1').replace(/\s+/g, ' ').trim(); }
 
-router.post('/pdf', requireAuth, pdfLimiter, validateBody(pdfSchema), asyncHandler(async (req: AuthedRequest, res) => {
+router.post('/pdf', requireAuth, validateBody(pdfSchema), asyncHandler(async (req: AuthedRequest, res) => {
   const body = req.body as z.infer<typeof pdfSchema>;
   const userId = req.userId!;
   let answer = '';
@@ -45,13 +47,13 @@ router.post('/pdf', requireAuth, pdfLimiter, validateBody(pdfSchema), asyncHandl
   let citations: any[] = [];
   let title = 'StudyMind Tutor Report';
   if (body.messageId) {
-    const msg = await ChatMessage.findOne({ _id: body.messageId, userId, role: 'assistant' }).lean() as any;
+    const msg = await ChatMessage.findOne({ _id: body.messageId, userId, role: 'assistant', pdfClarification: { $ne: true } }).lean() as any;
     if (!msg) throw new ApiError(404, 'MESSAGE_NOT_FOUND', 'That message does not exist.');
     answer = msg.content; outsideKnowledge = msg.outsideKnowledge; citations = msg.citations ?? [];
   } else if (body.threadId) {
     const thread = await ChatThread.findOne({ _id: body.threadId, userId }).lean();
     if (!thread) throw new ApiError(404, 'THREAD_NOT_FOUND', 'That chat does not exist.');
-    const msg = await ChatMessage.findOne({ threadId: thread._id, userId, role: 'assistant' }).sort({ createdAt: -1 }).lean() as any;
+    const msg = await ChatMessage.findOne({ threadId: thread._id, userId, role: 'assistant', pdfClarification: { $ne: true } }).sort({ createdAt: -1 }).lean() as any;
     if (!msg) throw new ApiError(404, 'MESSAGE_NOT_FOUND', 'That chat has no tutor answer to export.');
     title = thread.title || title; answer = msg.content; outsideKnowledge = msg.outsideKnowledge; citations = msg.citations ?? [];
   } else if (body.prompt!.startsWith('STUDYMIND_EXPORT:')) {
@@ -62,6 +64,10 @@ router.post('/pdf', requireAuth, pdfLimiter, validateBody(pdfSchema), asyncHandl
     const result = await answerQuestion(userId, body.prompt!, {});
     answer = result.answer; outsideKnowledge = result.outsideKnowledge; citations = result.citations;
   }
+  if (!answer.trim() && !outsideKnowledge?.trim()) {
+    throw new ApiError(422, 'PDF_CONTENT_EMPTY', 'There is no answer content to export. Ask a question or give me a topic first.');
+  }
+  if (!(await pdfRateLimiter.consume(req, res))) return;
   const download = await createPdfReport({ userId, answer, outsideKnowledge, citations, title });
   res.status(201).json(download);
 }));
@@ -72,11 +78,19 @@ router.get('/pdf/download', requireAuth, asyncHandler(async (req: AuthedRequest,
   if (validation.status === 401) throw new ApiError(401, 'INVALID_PDF_TOKEN', 'This PDF link is invalid or expired.');
   if (validation.status === 403) throw new ApiError(403, 'PDF_WRONG_USER', 'This PDF link belongs to another account.');
   const payload = validation.claims!;
-  const report = await PdfReport.findOne({ userId: req.userId, fileId: payload.file, expiresAt: { $gt: new Date() } }).lean();
-  if (!report) throw new ApiError(401, 'EXPIRED_PDF_TOKEN', 'This PDF report is no longer available.');
+  const now = new Date();
+  const report = await PdfReport.findOne({ userId: req.userId, fileId: payload.file, expiresAt: { $gt: now } }).lean();
+  if (!report) {
+    await PdfReport.deleteOne({ userId: req.userId, fileId: payload.file, expiresAt: { $lte: now } });
+    throw new ApiError(410, 'PDF_EXPIRED', 'This PDF has expired. Generate it again from the tutor answer.');
+  }
   const filePath = path.join(env.UPLOAD_DIR, 'pdf-reports', `${payload.file}.pdf`);
   const stat = await fs.stat(filePath).catch(() => null);
-  if (!stat || Date.now() - stat.mtimeMs > 24 * 60 * 60 * 1000) throw new ApiError(401, 'EXPIRED_PDF_TOKEN', 'This PDF report is no longer available.');
+  if (!stat || Date.now() - stat.mtimeMs >= 24 * 60 * 60 * 1000) {
+    await PdfReport.deleteOne({ _id: report._id, userId: req.userId });
+    await fs.rm(filePath, { force: true }).catch(() => undefined);
+    throw new ApiError(410, 'PDF_FILE_MISSING', 'This PDF file is no longer available. Generate it again from the tutor answer.');
+  }
   res.download(filePath, 'studymind-tutor-report.pdf');
 }));
 
@@ -84,11 +98,19 @@ router.get('/pdf/messages/:messageId', requireAuth, asyncHandler(async (req: Aut
   if (!objectId.safeParse(req.params.messageId).success) throw new ApiError(400, 'INVALID_ID', 'That identifier is not valid.');
   const message = await ChatMessage.findOne({ _id: req.params.messageId, userId: req.userId, role: 'assistant' }).select('_id').lean();
   if (!message) throw new ApiError(404, 'MESSAGE_NOT_FOUND', 'That message does not exist.');
-  const report = await PdfReport.findOne({ userId: req.userId, messageId: message._id, expiresAt: { $gt: new Date() } }).lean();
-  if (!report) throw new ApiError(404, 'PDF_NOT_FOUND', 'This message has no available PDF attachment.');
+  const now = new Date();
+  const report = await PdfReport.findOne({ userId: req.userId, messageId: message._id, expiresAt: { $gt: now } }).lean();
+  if (!report) {
+    await PdfReport.deleteMany({ userId: req.userId, messageId: message._id, expiresAt: { $lte: now } });
+    throw new ApiError(410, 'PDF_EXPIRED', 'This PDF attachment has expired. Generate it again from the tutor answer.');
+  }
   const filePath = path.join(env.UPLOAD_DIR, 'pdf-reports', `${report.fileId}.pdf`);
   const stat = await fs.stat(filePath).catch(() => null);
-  if (!stat || Date.now() - stat.mtimeMs > 24 * 60 * 60 * 1000) throw new ApiError(404, 'PDF_NOT_FOUND', 'This PDF attachment is no longer available.');
+  if (!stat || Date.now() - stat.mtimeMs >= 24 * 60 * 60 * 1000) {
+    await PdfReport.deleteOne({ _id: report._id, userId: req.userId });
+    await fs.rm(filePath, { force: true }).catch(() => undefined);
+    throw new ApiError(410, 'PDF_FILE_MISSING', 'This PDF attachment is no longer available. Generate it again from the tutor answer.');
+  }
   res.download(filePath, 'studymind-tutor-report.pdf');
 }));
 
@@ -96,7 +118,7 @@ router.post('/ask', requireAuth, askLimiter, validateBody(askSchema), asyncHandl
   const { question, threadId, previousMessageId, scope: requestedScope, language, includeContexts } = req.body as z.infer<typeof askSchema>;
   const userId = req.userId!;
   const requestedPreviousAssistant = previousMessageId
-    ? await ChatMessage.findOne({ _id: previousMessageId, userId, role: 'assistant' }).lean() as any
+    ? await ChatMessage.findOne({ _id: previousMessageId, userId, role: 'assistant', pdfClarification: { $ne: true } }).lean() as any
     : null;
   if (previousMessageId && !requestedPreviousAssistant) throw new ApiError(404, 'MESSAGE_NOT_FOUND', 'That tutor answer does not exist.');
 
@@ -113,34 +135,62 @@ router.post('/ask', requireAuth, askLimiter, validateBody(askSchema), asyncHandl
   await thread.save();
 
   const priorRows = await ChatMessage.find({ userId, threadId: thread._id })
-    .sort({ createdAt: -1 }).limit(8).select('role content citations').lean();
+    .sort({ createdAt: -1 }).limit(8).select('role content citations pdfClarification').lean();
   const history = promptHistory(priorRows.reverse() as any);
+  const previousAssistant = selectPreviousAssistant(priorRows as any[], requestedPreviousAssistant as any) as any;
   const userMessage = await ChatMessage.create({ userId, threadId: thread._id, role: 'user', content: question, scope });
   const user = await User.findById(userId).select('prefs').lean();
   const prefs = user?.prefs as any;
   const answerOptions = {
     scope, history,
-    previousAssistantCitations: [...priorRows].reverse().find((row: any) => row.role === 'assistant')?.citations ?? [],
+    previousAssistantCitations: previousAssistant?.citations ?? [],
     language: language ?? (prefs?.language === 'hi' ? 'hi' : 'en') as 'en' | 'hi',
     answerStyle: prefs?.answerStyle === 'deep' ? 'deep' as const : 'quick' as const,
     studyLevel: prefs?.studyLevel ?? 'self-learner',
   };
-  const previousAssistant = selectPreviousAssistant(priorRows as any[], requestedPreviousAssistant as any) as any;
   let pdfIntent = detectPdfIntent(question);
-  if (pdfIntent.kind === 'ambiguous' && getAIProvider().name === 'gemini') {
-    try {
-      const decision = await getAIProvider().generateJSON<{ makePdf: boolean; target?: 'previous' | 'new'; contentQuestion?: string }>({
-        prompt: `Decide whether this student message is asking to generate/export a PDF file, rather than asking about PDF as a topic. Return exactly JSON: {"makePdf":boolean,"target":"previous"|"new","contentQuestion":string|null}. Use target previous only for clear references to the preceding tutor answer. Message: ${JSON.stringify(question)}`,
-        temperature: 0, maxOutputTokens: 80,
-      });
-      if (decision.makePdf) pdfIntent = { kind: 'request', target: decision.target === 'previous' ? 'previous' : 'new', ...(decision.contentQuestion ? { contentQuestion: decision.contentQuestion } : {}) };
-      else pdfIntent = { kind: 'none', target: 'new' };
-    } catch { pdfIntent = { kind: 'none', target: 'new' }; }
+  if (thread.pendingPdf && pdfIntent.kind === 'none') {
+    // The previous tutor turn explicitly asked for PDF contents. Treat this
+    // reply as the requested topic, not as an unrelated normal tutor question.
+    pdfIntent = detectPdfIntent(`Create a PDF about ${question}`);
   }
-  if (pdfIntent.kind === 'request' && pdfIntent.target === 'previous' && !previousAssistant) {
-    throw new ApiError(409, 'PDF_SOURCE_MISSING', 'There is no previous tutor answer to export yet. Ask a question first.');
-  }
-  if (pdfIntent.kind === 'request' && (pdfIntent.target === 'previous' ? Boolean(previousAssistant) : Boolean(pdfIntent.contentQuestion))) {
+  pdfIntent = await classifyAmbiguousPdfIntent(
+    pdfIntent,
+    pdfIntent.kind === 'ambiguous' && getAIProvider().name === 'gemini'
+      ? () => getAIProvider().generateJSON<{ makePdf: boolean; target?: 'previous' | 'new'; contentQuestion?: string | null }>({
+          prompt: `Decide whether this student message is asking to generate/export a PDF file, rather than asking about PDF as a topic. Return exactly JSON: {"makePdf":boolean,"target":"previous"|"new","contentQuestion":string|null}. Use target previous only for clear references to the preceding tutor answer. Message: ${JSON.stringify(question)}`,
+          temperature: 0, maxOutputTokens: 80,
+        })
+      : undefined
+  );
+
+  const clarifyPdf = async (message?: string) => {
+    const clarification = message ?? (answerOptions.language === 'hi'
+      ? 'PDF में क्या रखना चाहिए? कोई विषय बताओ, या पहले इस चैट में उत्तर माँगो जिसे मैं PDF में बदल सकूँ।'
+      : 'What would you like the PDF to contain? Tell me a topic, or ask something first and I can export that answer.');
+    thread.pendingPdf = true;
+    thread.lastMessageAt = new Date();
+    await thread.save();
+    const assistantMessage = await ChatMessage.create({
+      userId, threadId: thread._id, role: 'assistant', content: clarification,
+      citations: [], groundingStatus: 'partial', outsideKnowledge: null, scope, pdfClarification: true, attachments: [],
+    });
+    return res.json({
+      answer: clarification, citations: [], groundingStatus: 'partial', outsideKnowledge: null,
+      language: answerOptions.language, topSimilarity: 0, lexicalOverlap: 0,
+      audit: { citedRequested: 0, citedVerified: 0, stripped: 0, declined: false },
+      unsearchableCount: 0, usingSource: null, pdfClarification: true,
+      threadId: String(thread._id), messageId: String(assistantMessage._id), userMessageId: String(userMessage._id),
+    });
+  };
+
+  if (pdfIntent.kind === 'ambiguous') return clarifyPdf();
+  if (pdfIntent.kind === 'request' && pdfIntent.target === 'previous' && !previousAssistant) return clarifyPdf();
+  if (pdfIntent.kind === 'request' && pdfIntent.target === 'new' && !pdfIntent.contentQuestion) return clarifyPdf();
+
+  const pdfRequested = pdfIntent.kind === 'request';
+
+  if (pdfRequested) {
     let pdfContent: string;
     let outsideKnowledge: string | null;
     let citations: any[];
@@ -162,15 +212,30 @@ router.post('/ask', requireAuth, askLimiter, validateBody(askSchema), asyncHandl
       responseAnswer = pdfContent;
       responseExtra = result as unknown as Record<string, unknown>;
     }
+    if (!pdfContent.trim()) return clarifyPdf();
+    if (!(await pdfRateLimiter.consume(req, res))) return;
     const assistantMessage = await ChatMessage.create({
       userId, threadId: thread._id, role: 'assistant', content: responseAnswer,
       citations, groundingStatus, outsideKnowledge, scope, attachments: [],
     });
-    const download = await createPdfReport({ userId, answer: pdfContent, outsideKnowledge, citations, title: thread.title || 'StudyMind Tutor Report', messageId: String(assistantMessage._id) });
-    assistantMessage.attachments = [{ type: 'pdf', messageId: assistantMessage._id }] as never;
-    await assistantMessage.save();
-    thread.lastMessageAt = new Date(); await thread.save();
-    await logEvent(userId, 'question_asked', null, null, 'tutor', { groundingStatus, citations: citations.length, pdfAttachment: true });
+    let download: Awaited<ReturnType<typeof createPdfReport>>;
+    try {
+      download = await createPdfReport({ userId, answer: pdfContent, outsideKnowledge, citations, title: thread.title || 'StudyMind Tutor Report', messageId: String(assistantMessage._id) });
+      assistantMessage.attachments = [{ type: 'pdf', messageId: assistantMessage._id }] as never;
+      await assistantMessage.save();
+      thread.pendingPdf = false;
+      thread.lastMessageAt = new Date();
+      await thread.save();
+    } catch (err) {
+      await deletePdfReportsForMessages(userId, [assistantMessage._id]).catch((cleanupErr) => {
+        console.error('[pdf] rollback failed', { userId, error: (cleanupErr as Error)?.name ?? 'Error' });
+      });
+      await ChatMessage.deleteOne({ _id: assistantMessage._id, userId }).catch(() => undefined);
+      throw err;
+    }
+    await logEvent(userId, 'question_asked', null, null, 'tutor', { groundingStatus, citations: citations.length, pdfAttachment: true }).catch((err) => {
+      console.error('[tutor] event log failed', { userId, error: (err as Error)?.name ?? 'Error' });
+    });
     return res.json({
       answer: responseAnswer, citations, groundingStatus, outsideKnowledge,
       language: answerOptions.language, topSimilarity: 0, lexicalOverlap: 0,
@@ -207,7 +272,9 @@ router.get('/threads/:id', requireAuth, asyncHandler(async (req: AuthedRequest, 
   const thread = await ChatThread.findOne({ _id: req.params.id, userId: req.userId }).lean();
   if (!thread) throw new ApiError(404, 'THREAD_NOT_FOUND', 'That chat does not exist.');
   const messages = await ChatMessage.find({ threadId: thread._id, userId: req.userId }).sort({ createdAt: 1 }).limit(500).lean();
-  res.json({ thread: { id: String(thread._id), title: thread.title, scope: thread.scope }, messages: messages.map((m: any) => ({ id: String(m._id), role: m.role, content: m.content, citations: m.citations, groundingStatus: m.groundingStatus, outsideKnowledge: m.outsideKnowledge, scope: m.scope, attachments: m.attachments ?? [], createdAt: m.createdAt })) });
+  const attachedMessageIds = messages.filter((m: any) => m.attachments?.some((a: any) => a.type === 'pdf')).map((m: any) => m._id);
+  const livePdfMessageIds = await availablePdfMessageIds(String(req.userId), attachedMessageIds);
+  res.json({ thread: { id: String(thread._id), title: thread.title, scope: thread.scope, pendingPdf: Boolean(thread.pendingPdf) }, messages: messages.map((m: any) => ({ id: String(m._id), role: m.role, content: m.content, citations: m.citations, groundingStatus: m.groundingStatus, outsideKnowledge: m.outsideKnowledge, pdfClarification: Boolean(m.pdfClarification), scope: m.scope, attachments: (m.attachments ?? []).filter((a: any) => a.type !== 'pdf' || livePdfMessageIds.has(String(m._id))), createdAt: m.createdAt })) });
 }));
 router.patch('/threads/:id', requireAuth, validateBody(z.object({ title: z.string().trim().min(1).max(120) })), asyncHandler(async (req: AuthedRequest, res) => {
   const thread = await ChatThread.findOneAndUpdate({ _id: req.params.id, userId: req.userId }, { $set: { title: (req.body as any).title } }, { new: true });
@@ -217,6 +284,8 @@ router.patch('/threads/:id', requireAuth, validateBody(z.object({ title: z.strin
 router.delete('/threads/:id', requireAuth, asyncHandler(async (req: AuthedRequest, res) => {
   const thread = await ChatThread.findOneAndDelete({ _id: req.params.id, userId: req.userId });
   if (!thread) throw new ApiError(404, 'THREAD_NOT_FOUND', 'That chat does not exist.');
+  const messages = await ChatMessage.find({ threadId: thread._id, userId: req.userId }).select('_id').lean();
+  await deletePdfReportsForMessages(String(req.userId), messages.map((m: any) => m._id));
   await ChatMessage.deleteMany({ threadId: thread._id, userId: req.userId });
   res.status(204).send();
 }));

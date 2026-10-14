@@ -67,7 +67,12 @@ export function errorHandler(
     return;
   }
 
-  console.error('[unhandled]', err);
+  // Never print provider payloads, filesystem paths, request bodies, or raw
+  // exception messages to production logs; keep only diagnostic classification.
+  console.error('[unhandled]', {
+    name: typeof anyErr?.name === 'string' ? anyErr.name : 'Error',
+    code: typeof anyErr?.code === 'string' ? anyErr.code : 'UNCLASSIFIED',
+  });
   res.status(500).json({
     error: {
       code: 'INTERNAL_ERROR',

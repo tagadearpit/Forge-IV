@@ -144,24 +144,22 @@ account-creation shortcut.
 
 ---
 
-## 9. npm audit — 2 known vulnerabilities (1 critical, 1 high)
+## 9. npm audit — unresolved production dependency advisories
 
-`npm audit --omit=dev` summary:
+`npm audit --omit=dev` was re-run on 2026-10-14. It exited non-zero with **6
+vulnerabilities (4 low, 1 high, 1 critical)**, including:
 
-```
-next      >=9.3.4-canary.0 - <=16.3.0-preview.10   critical  (direct)
-  - Next.js self-hosted applications vulnerable to DoS via Image Optimizer
-  - Next.js HTTP request deserialization can lead to DoS
-  - Next.js HTTP request smuggling in rewrites
-postcss   <=8.5.22                                 high      (transitive, via next)
-  - PostCSS XSS via Unescaped </style> in CSS Stringify Output
-  - PostCSS arbitrary file read via attacker-controlled sourceMappingURL
-```
+- **Next.js** (direct): critical/high/low advisories for request/server-component
+  denial of service, request smuggling, cache issues, SSRF, and other web risks.
+- **PostCSS** (transitive through Next.js): high-severity XSS and source-map file
+  disclosure advisories.
+- **KaTeX** (transitive through the math-markdown packages): prototype pollution.
 
-Both are fixed only by moving to **Next.js 16**, a major breaking upgrade that was
-**not applied** — it would require re-validating every route and component with no
-time budget left, and an unvalidated major upgrade is worse than a documented
-advisory. Re-run `npm audit --omit=dev` and schedule the upgrade.
+The available automatic remediation requires a **Next.js 16** major upgrade and
+breaking dependency changes. That was not applied without app-wide compatibility
+and production-build validation. The advisories remain a release blocker until a
+reviewed upgrade is tested and deployed. Re-run `npm audit --omit=dev` after that
+work; the exact advisory list changes over time.
 
 Multer was upgraded 1.x → **2.4.0** (no advisory); its storage callback no longer
 guarantees `req.params`, which the upload filename previously relied on.
@@ -184,7 +182,21 @@ guarantees `req.params`, which the upload filename previously relied on.
 
 ---
 
-## 11. Not deployed
+## 11. Public deployment exists; latest-code deployment is unverified
 
-The prototype has never been deployed to Vercel or Replit. No working public
-URL exists. Only local runs against an ephemeral/local MongoDB have been verified.
+A public frontend is deployed at https://studymind-forgeiv.vercel.app and the
+API is deployed at https://forge-iv.onrender.com. The last successful health
+check on 2026-10-14 reported `status: ok`, a connected database, and Gemini as
+the active provider; a follow-up health request during this audit timed out, so
+current API availability is unverified. The public Tutor page was rechecked:
+its JavaScript bundle still lacks `Download answer as PDF` and
+`previousMessageId`, while retaining the old generic tutor error bubble. This
+confirms that the deployed frontend is stale relative to the local fixes; the
+Vercel deployment branch/build configuration is not verified. Neither check
+proves that the latest `feat/studymind-backend` commit is deployed.
+
+Render is configured on its free plan with no persistent disk. `UPLOAD_DIR`
+therefore remains ephemeral: uploaded source files and generated PDFs can be
+lost on restart or redeploy, even while MongoDB metadata persists. Durable file
+availability requires provisioning and mounting persistent storage (or an
+object-storage service) and validating it in the deployed environment.

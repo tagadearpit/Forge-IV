@@ -1,12 +1,12 @@
-export interface PromptMessage { role: 'user' | 'assistant'; content: string }
+export interface PromptMessage { role: 'user' | 'assistant'; content: string; pdfClarification?: boolean }
 
 /** Prefer the exact assistant reply visible to the student; otherwise use the latest in this thread. */
 export function selectPreviousAssistant<T extends PromptMessage>(
   rows: readonly T[],
   explicit?: T | null
 ): T | null {
-  if (explicit?.role === 'assistant') return explicit;
-  return [...rows].reverse().find((row) => row.role === 'assistant') ?? null;
+  if (explicit?.role === 'assistant' && !explicit.pdfClarification) return explicit;
+  return [...rows].reverse().find((row) => row.role === 'assistant' && !row.pdfClarification) ?? null;
 }
 
 /** Keep the most recent eight chat messages under an approximate 3,000-token character budget. */

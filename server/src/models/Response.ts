@@ -15,4 +15,8 @@ const ResponseSchema = new Schema(
 );
 
 export type ResponseDoc = InferSchemaType<typeof ResponseSchema>;
+// Retries update a response through the service upsert. Do not add a unique index
+// here: historical deployments may already contain duplicate rows. Reads collapse
+// those rows to the most recently saved answer before scoring/reporting.
+ResponseSchema.index({ userId: 1, assessmentId: 1, questionId: 1 });
 export const Response = mongoose.model('Response', ResponseSchema);

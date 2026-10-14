@@ -4,6 +4,7 @@ import { connectDb, disconnectDb } from './db/connect.js';
 import { createApp } from './app.js';
 import { activeSpace, groundingThresholds } from './utils/vectorSpace.js';
 import { resumeIngestionJobs } from './services/ingestion.js';
+import { cleanupExpiredPdfReports } from './services/pdfReport.js';
 
 async function main() {
   // Bind to 0.0.0.0 and process.env.PORT so Replit's Run button works with no
@@ -11,6 +12,12 @@ async function main() {
   const db = await connectDb();
   console.log(`[db] connected (${db.mode}) ${db.uri}`);
   void resumeIngestionJobs().catch((err) => console.error('[ingest:resume] startup recovery failed', err));
+  const cleanupPdfReports = () => void cleanupExpiredPdfReports().catch((err) => {
+    console.error('[pdf] scheduled expiry cleanup failed', { name: (err as Error)?.name ?? 'Error' });
+  });
+  cleanupPdfReports();
+  const pdfCleanupTimer = setInterval(cleanupPdfReports, 60 * 60 * 1000);
+  pdfCleanupTimer.unref();
 
   const app = createApp();
   const server = app.listen(env.PORT, '0.0.0.0', () => {
@@ -23,6 +30,7 @@ async function main() {
 
   const shutdown = async (signal: string) => {
     console.log(`\n[studymind] ${signal} received, shutting down`);
+    clearInterval(pdfCleanupTimer);
     server.close();
     await disconnectDb();
     process.exit(0);

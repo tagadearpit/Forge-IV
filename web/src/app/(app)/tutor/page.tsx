@@ -5,7 +5,7 @@ import Link from 'next/link';
 import {
   Send, BookOpen, AlertTriangle, Mic, Volume2, Globe, Sparkles, Loader2, ExternalLink, Download,
 } from 'lucide-react';
-import { api, type Citation, type TutorAnswer } from '@/lib/api';
+import { api, ApiRequestError, type Citation, type TutorAnswer } from '@/lib/api';
 import { useToast, Button } from '@/components/ui';
 import { Markdown } from '@/components/markdown';
 import { cn } from '@/lib/utils';
@@ -152,7 +152,7 @@ export default function TutorPage() {
       setScope(sourceIds.length ? { label: `source:${sourceIds[0]}`, sourceIds, sectionTitle: sc.sectionTitle ?? undefined } : topicIds.length ? { label: `topic:${topicIds[0]}`, topicIds } : { label: 'All sources' });
       setMessages((data.messages ?? []).map((m: any) => ({
         id: m.id, role: m.role, content: m.content,
-        ...(m.role === 'assistant' ? { result: { answer: m.content, citations: m.citations ?? [], groundingStatus: m.groundingStatus ?? 'partial', outsideKnowledge: m.outsideKnowledge ?? null, language: 'en', topSimilarity: 0, lexicalOverlap: 0, audit: { citedRequested: 0, citedVerified: 0, stripped: 0, declined: false }, unsearchableCount: 0, usingSource: null, messageId: m.id, ...(m.attachments?.find((a: any) => a.type === 'pdf') ? { attachment: { type: 'pdf' as const, messageId: String(m.attachments.find((a: any) => a.type === 'pdf').messageId) } } : {}) } as TutorAnswer } : {}),
+        ...(m.role === 'assistant' ? { result: { answer: m.content, citations: m.citations ?? [], groundingStatus: m.groundingStatus ?? 'partial', outsideKnowledge: m.outsideKnowledge ?? null, language: 'en', topSimilarity: 0, lexicalOverlap: 0, audit: { citedRequested: 0, citedVerified: 0, stripped: 0, declined: false }, unsearchableCount: 0, usingSource: null, messageId: m.id, pdfClarification: Boolean(m.pdfClarification), ...(m.attachments?.find((a: any) => a.type === 'pdf') ? { attachment: { type: 'pdf' as const, messageId: String(m.attachments.find((a: any) => a.type === 'pdf').messageId) } } : {}) } as TutorAnswer } : {}),
       })));
     }).catch(() => {});
   }, []);
@@ -179,7 +179,7 @@ export default function TutorPage() {
       setMessages((m) => [...m, userMsg]);
 
       try {
-        const previousMessageId = [...messages].reverse().find((m) => m.role === 'assistant' && m.result?.messageId)?.result?.messageId;
+        const previousMessageId = [...messages].reverse().find((m) => m.role === 'assistant' && !m.result?.pdfClarification && m.result?.messageId)?.result?.messageId;
         const result = await api.ask({
           question: q,
           ...(threadId ? { threadId } : {}),
@@ -201,9 +201,9 @@ export default function TutorPage() {
           try {
             const blob = await api.downloadPdfAttachment(result.attachment.messageId);
             const href = URL.createObjectURL(blob);
-            const anchor = document.createElement('a'); anchor.href = href; anchor.download = 'studymind-tutor-report.pdf'; anchor.click();
+            const anchor = document.createElement('a'); anchor.href = href; anchor.download = 'studymind-tutor-report.pdf'; document.body.appendChild(anchor); anchor.click(); anchor.remove();
             window.setTimeout(() => URL.revokeObjectURL(href), 1000);
-          } catch { toast.push('warning', 'Your PDF is attached to this message; use its download chip to retry.'); }
+          } catch (err: any) { toast.push('warning', err?.message ?? 'The PDF is attached to this message; use its download chip to retry.'); }
         }
       } catch (err: any) {
         toast.push('error', err?.message ?? 'Could not reach the tutor.');
@@ -473,6 +473,11 @@ function Row({ label, value, mono }: { label: string; value: string; mono?: bool
   );
 }
 
+function pdfFailureMessage(err: unknown): string {
+  if (err instanceof ApiRequestError) return `${err.message} (HTTP ${err.status || 'network'}, ${err.code})`;
+  return err instanceof Error ? err.message : 'PDF export failed. Please try again.';
+}
+
 function AnswerBlock({
   result,
   threadId,
@@ -492,7 +497,7 @@ function AnswerBlock({
       const blob = await api.generatePdf(result.messageId ? { messageId: result.messageId } : threadId ? { threadId } : { prompt: result.answer });
       const href = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = href; a.download = 'studymind-tutor-report.pdf'; document.body.appendChild(a); a.click(); a.remove();
       window.setTimeout(() => URL.revokeObjectURL(href), 1000);
-    } catch { setPdfError('PDF download failed. Please try again.'); } finally { setPdfBusy(false); }
+    } catch (err) { setPdfError(pdfFailureMessage(err)); } finally { setPdfBusy(false); }
   };
   const outside = result.groundingStatus === 'outside_material';
 
@@ -531,12 +536,12 @@ function AnswerBlock({
         >
           <Volume2 className="h-3 w-3" aria-hidden /> Read aloud
         </button>
-        <button type="button" onClick={() => void downloadPdf()} disabled={pdfBusy} className="chip border border-[color:rgb(var(--border))] hover:bg-[color:rgb(var(--surface))]" aria-label="Download answer as PDF">
+        {!result.pdfClarification && <button type="button" onClick={() => void downloadPdf()} disabled={pdfBusy} className="chip border border-[color:rgb(var(--border))] hover:bg-[color:rgb(var(--surface))]" aria-label="Download answer as PDF">
           <Download className="h-3 w-3" aria-hidden /> {pdfBusy ? 'Preparing PDF…' : 'Download as PDF'}
-        </button>
-        {result.attachment?.type === 'pdf' && <button type="button" onClick={async () => {
+        </button>}
+        {!result.pdfClarification && result.attachment?.type === 'pdf' && <button type="button" onClick={async () => {
           try { const blob = await api.downloadPdfAttachment(result.attachment!.messageId); const href = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = href; a.download = 'studymind-tutor-report.pdf'; a.click(); window.setTimeout(() => URL.revokeObjectURL(href), 1000); }
-          catch { setPdfError('PDF attachment is no longer available.'); }
+          catch (err) { setPdfError(pdfFailureMessage(err)); }
         }} className="chip border border-brand-300 bg-brand-50 text-brand-700 hover:bg-brand-100 dark:bg-brand-950 dark:text-brand-300" aria-label="Download attached PDF">
           <Download className="h-3 w-3" aria-hidden /> Download attached PDF
         </button>}

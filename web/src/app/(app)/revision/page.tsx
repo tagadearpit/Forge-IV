@@ -15,6 +15,7 @@ export default function RevisionPage() {
   const [idx, setIdx] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfError, setPdfError] = useState('');
 
   useEffect(() => {
     api.topics()
@@ -35,11 +36,12 @@ export default function RevisionPage() {
   const card = rev.flashcards?.[idx];
   const exportPdf = async () => {
     setPdfBusy(true);
+    setPdfError('');
     try {
       const content = [`Topic: ${rev.topic?.name ?? 'Revision'}`, '', 'Summary:', ...(rev.summarySlides ?? []).map((s: any) => `${s.index}. ${s.text}`), '', 'Revision cards:', ...(rev.flashcards ?? []).map((c: any, i: number) => `${i + 1}. ${c.front}\nAnswer: ${c.back}${c.citation ? `\nSource: ${c.citation}` : ''}`)].join('\n');
       const blob = await api.generatePdf({ prompt: `STUDYMIND_EXPORT:Revision summary\n${content}` });
-      const href = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = href; a.download = 'studymind-revision-summary.pdf'; a.click(); URL.revokeObjectURL(href);
-    } finally { setPdfBusy(false); }
+      const href = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = href; a.download = 'studymind-revision-summary.pdf'; document.body.appendChild(a); a.click(); a.remove(); window.setTimeout(() => URL.revokeObjectURL(href), 1000);
+    } catch (err) { setPdfError(err instanceof Error ? err.message : 'Could not create the PDF. Please retry.'); } finally { setPdfBusy(false); }
   };
 
   return (
@@ -118,6 +120,7 @@ export default function RevisionPage() {
       <Button variant="secondary" onClick={() => void exportPdf()} loading={pdfBusy}>
         <Download className="h-4 w-4" aria-hidden /> Download revision summary as PDF
       </Button>
+      {pdfError && <p role="alert" className="text-sm text-red-600">{pdfError}</p>}
     </div>
   );
 }

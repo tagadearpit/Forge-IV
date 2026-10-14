@@ -11,4 +11,7 @@ test('uses the exact visible assistant reply when one is supplied, otherwise the
   assert.equal(selectPreviousAssistant(rows, earlier), earlier);
   assert.equal(selectPreviousAssistant(rows), latest);
   assert.equal(selectPreviousAssistant([user]), null);
+  const clarification: PromptMessage = { role: 'assistant', content: 'What should the PDF contain?', pdfClarification: true };
+  assert.equal(selectPreviousAssistant([earlier, clarification]), earlier);
+  assert.equal(selectPreviousAssistant([clarification]), null);
 });

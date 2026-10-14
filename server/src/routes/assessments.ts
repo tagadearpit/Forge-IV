@@ -11,6 +11,7 @@ import { createAssessment, submitAnswer } from '../services/assessment.js';
 import { getMasteryOverview } from '../services/learnerModel.js';
 import { logEvent } from '../services/events.js';
 import { getAIProvider } from '../ai/provider.js';
+import { summarizeAssessment, latestNonblankResponses } from '../services/assessmentResult.js';
 
 const router = Router();
 
@@ -80,8 +81,8 @@ router.get(
     const assessment = await Assessment.findOne({ _id: req.params.id, userId: req.userId }).lean();
     if (!assessment) throw new ApiError(404, 'ASSESSMENT_NOT_FOUND', 'That assessment does not exist.');
 
-    const questions = await Question.find({ _id: { $in: assessment.questionIds ?? [] } }).lean();
-    const responses = await Response.find({ assessmentId: assessment._id }).lean();
+    const questions = await Question.find({ _id: { $in: assessment.questionIds ?? [] }, userId: req.userId }).lean();
+    const responses = latestNonblankResponses(await Response.find({ assessmentId: assessment._id, userId: req.userId, questionId: { $in: assessment.questionIds ?? [] } }).lean() as any[]);
     const rMap = new Map(responses.map((r: any) => [String(r.questionId), r]));
 
     // Never leak answer keys before submission.
@@ -131,12 +132,24 @@ router.post(
   validateBody(answerSchema),
   asyncHandler(async (req: AuthedRequest, res) => {
     const { questionId, answer, timeSpentSec } = req.body as z.infer<typeof answerSchema>;
+    if (typeof answer === 'string' && !answer.trim()) {
+      throw new ApiError(422, 'ANSWER_BLANK', 'Blank answers are not saved.');
+    }
 
     const assessment = await Assessment.findOne({ _id: req.params.id, userId: req.userId });
     if (!assessment) throw new ApiError(404, 'ASSESSMENT_NOT_FOUND', 'That assessment does not exist.');
     if (assessment.status === 'submitted') {
       throw new ApiError(409, 'ALREADY_SUBMITTED', 'This assessment has already been submitted.');
     }
+    if (!['ready', 'in_progress'].includes(assessment.status)) {
+      throw new ApiError(409, 'ASSESSMENT_NOT_READY', 'This assessment cannot accept answers yet.');
+    }
+    const started = await Assessment.findOneAndUpdate(
+      { _id: assessment._id, userId: req.userId, status: { $in: ['ready', 'in_progress'] } },
+      { $set: { startedAt: assessment.startedAt ?? new Date(), status: 'in_progress' } },
+      { new: true }
+    );
+    if (!started) throw new ApiError(409, 'ALREADY_SUBMITTED', 'This assessment has already been submitted.');
 
     const graded = await submitAnswer(
       req.userId!,
@@ -146,12 +159,6 @@ router.post(
       timeSpentSec ?? 0
     );
     if (!graded) throw new ApiError(404, 'QUESTION_NOT_FOUND', 'That question is not part of this assessment.');
-
-    if (!assessment.startedAt) {
-      assessment.startedAt = new Date();
-      assessment.status = 'in_progress';
-      await assessment.save();
-    }
 
     res.json({
       questionId: graded.questionId,
@@ -171,22 +178,25 @@ router.post(
   asyncHandler(async (req: AuthedRequest, res) => {
     const assessment = await Assessment.findOne({ _id: req.params.id, userId: req.userId });
     if (!assessment) throw new ApiError(404, 'ASSESSMENT_NOT_FOUND', 'That assessment does not exist.');
-    if (assessment.status === 'submitted') {
-      throw new ApiError(409, 'ALREADY_SUBMITTED', 'This assessment has already been submitted.');
+    if (!['ready', 'in_progress'].includes(assessment.status)) {
+      if (assessment.status === 'submitted') throw new ApiError(409, 'ALREADY_SUBMITTED', 'This assessment has already been submitted.');
+      throw new ApiError(409, 'ASSESSMENT_NOT_READY', 'This assessment cannot be submitted yet.');
     }
 
-    const questions = await Question.find({ _id: { $in: assessment.questionIds ?? [] } }).lean();
-    const responses = await Response.find({ assessmentId: assessment._id }).lean();
-
-    const answered = new Set(responses.map((r: any) => String(r.questionId)));
-    const correctCount = responses.filter((r: any) => r.correct).length;
-    const score = questions.length ? correctCount / questions.length : 0;
-
-    assessment.status = 'submitted';
-    assessment.submittedAt = new Date();
-    assessment.score = Number(score.toFixed(4));
-    assessment.maxScore = questions.length;
-    await assessment.save();
+    const questions = await Question.find({ _id: { $in: assessment.questionIds ?? [] }, userId: req.userId }).lean();
+    const rawResponses = await Response.find({
+      assessmentId: assessment._id, userId: req.userId, questionId: { $in: assessment.questionIds ?? [] },
+    }).lean() as any[];
+    const summary = summarizeAssessment(questions.length, rawResponses);
+    const submittedAt = new Date();
+    const finalized = await Assessment.findOneAndUpdate(
+      { _id: assessment._id, userId: req.userId, status: { $in: ['ready', 'in_progress'] } },
+      { $set: { status: 'submitted', submittedAt, score: Number(summary.score.toFixed(4)), maxScore: questions.length } },
+      { new: true }
+    );
+    if (!finalized) throw new ApiError(409, 'ALREADY_SUBMITTED', 'This assessment has already been submitted.');
+    const correctCount = summary.correct;
+    const score = summary.score;
 
     await logEvent(req.userId!, 'quiz_taken', null, null, 'assessments', {
       assessmentId: String(assessment._id),
@@ -195,10 +205,10 @@ router.post(
 
     res.json({
       assessmentId: String(assessment._id),
-      score: assessment.score,
+      score: finalized.score,
       correct: correctCount,
       total: questions.length,
-      unanswered: questions.length - answered.size,
+      unanswered: summary.unanswered,
     });
   })
 );
@@ -215,19 +225,20 @@ router.get(
       throw new ApiError(409, 'NOT_SUBMITTED', 'Submit the assessment before viewing its report.');
     }
 
-    const questions = await Question.find({ _id: { $in: assessment.questionIds ?? [] } }).lean();
-    const responses = await Response.find({ assessmentId: assessment._id }).lean();
+    const questions = await Question.find({ _id: { $in: assessment.questionIds ?? [] }, userId: req.userId }).lean();
+    const responses = latestNonblankResponses(await Response.find({ assessmentId: assessment._id, userId: req.userId, questionId: { $in: assessment.questionIds ?? [] } }).lean() as any[]);
     const topicIds = [...new Set(questions.map((q: any) => q.topicId).filter(Boolean).map(String))];
-    const topics = await Topic.find({ _id: { $in: topicIds } }).lean();
+    const topics = await Topic.find({ _id: { $in: topicIds }, userId: req.userId }).lean();
     const tMap = new Map(topics.map((t: any) => [String(t._id), t.name]));
 
     // Topic-level breakdown.
     const byTopic = new Map<string, { correct: number; total: number }>();
-    for (const r of responses) {
-      const key = String(r.topicId ?? 'unassigned');
+    const responseByQuestion = new Map(responses.map((r: any) => [String(r.questionId), r]));
+    for (const question of questions as any[]) {
+      const key = String(question.topicId ?? 'unassigned');
       const cur = byTopic.get(key) ?? { correct: 0, total: 0 };
       cur.total++;
-      if (r.correct) cur.correct++;
+      if (responseByQuestion.get(String(question._id))?.correct) cur.correct++;
       byTopic.set(key, cur);
     }
 

@@ -9,6 +9,7 @@ const ChatThreadSchema = new Schema({
     sectionTitle: { type: String, maxlength: 160, default: null },
   },
   lastMessageAt: { type: Date, default: Date.now, index: true },
+  pendingPdf: { type: Boolean, default: false },
 }, { timestamps: true });
 ChatThreadSchema.index({ userId: 1, lastMessageAt: -1 });
 export type ChatThreadDoc = InferSchemaType<typeof ChatThreadSchema>;

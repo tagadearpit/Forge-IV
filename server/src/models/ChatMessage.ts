@@ -8,6 +8,7 @@ const ChatMessageSchema = new Schema({
   citations: { type: [Schema.Types.Mixed], default: [] },
   groundingStatus: { type: String, enum: ['full', 'partial', 'outside_material'], default: null },
   outsideKnowledge: { type: String, default: null, maxlength: 12000 },
+  pdfClarification: { type: Boolean, default: false },
   scope: { sourceIds: [{ type: Schema.Types.ObjectId }], topicIds: [{ type: Schema.Types.ObjectId }] },
   attachments: { type: [{ type: { type: String, enum: ['pdf'], required: true }, messageId: { type: Schema.Types.ObjectId, required: true } }], default: [] },
   createdAt: { type: Date, default: Date.now, index: true },

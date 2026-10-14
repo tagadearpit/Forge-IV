@@ -719,24 +719,23 @@ export async function submitAnswer(
   answer: unknown,
   timeSpentSec = 0
 ): Promise<GradedAnswer | null> {
+  const assessment = await Assessment.findOne({
+    _id: assessmentId, userId, questionIds: questionId, status: { $in: ['ready', 'in_progress'] },
+  }).select('_id').lean();
+  if (!assessment) return null;
   const question = await Question.findOne({ _id: questionId, userId });
   if (!question) return null;
 
   const { correct } = gradeAnswer(question, answer);
+  const saved = await Response.updateOne(
+    { userId, assessmentId, questionId },
+    { $set: { answer, correct, timeSpentSec, topicId: question.topicId }, $setOnInsert: { userId, assessmentId, questionId } },
+    { upsert: true }
+  );
 
-  await Response.create({
-    userId,
-    questionId,
-    assessmentId,
-    answer,
-    correct,
-    timeSpentSec,
-    topicId: question.topicId,
-  });
-
-  // Mastery only advances for verified questions — an unverified key must not
-  // be allowed to corrupt the learner model.
-  if (question.verified && question.topicId) {
+  // Mastery advances once per question response, not on client retries or
+  // repeated finalization saves. Answer edits still update the persisted grade.
+  if (saved.upsertedCount > 0 && question.verified && question.topicId) {
     await recordAnswer(userId, String(question.topicId), correct, {
       source: 'quiz',
       difficulty: question.difficulty,
@@ -775,10 +774,10 @@ export async function submitAnswer(
     };
   }
 
-  const units = await Unit.find({ _id: { $in: question.sourceUnitIds } }).lean();
+  const units = await Unit.find({ _id: { $in: question.sourceUnitIds }, userId }).lean();
   const sourceIds = [...new Set(units.map((u: any) => String(u.sourceId)))];
   const { Source } = await import('../models/Source.js');
-  const sources = await Source.find({ _id: { $in: sourceIds } }).select('title type').lean();
+  const sources = await Source.find({ _id: { $in: sourceIds }, userId }).select('title type').lean();
   const smap = new Map(sources.map((s) => [String(s._id), s]));
 
   const citations = units.map((u: any) => {

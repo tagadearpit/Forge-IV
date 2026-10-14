@@ -172,8 +172,8 @@ router.get(
     const source = await Source.findOne({ _id: req.params.id, userId: req.userId }).lean();
     if (!source) throw new ApiError(404, 'SOURCE_NOT_FOUND', 'That source does not exist.');
 
-    const units = await Unit.find({ sourceId: source._id }).sort({ createdAt: 1 }).lean();
-    const topics = await Topic.find({ _id: { $in: source.topicIds ?? [] } }).lean();
+    const units = await Unit.find({ sourceId: source._id, userId: req.userId }).sort({ createdAt: 1 }).lean();
+    const topics = await Topic.find({ _id: { $in: source.topicIds ?? [] }, userId: req.userId }).lean();
 
     res.json({
       source: {

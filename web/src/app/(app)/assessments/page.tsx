@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Play, CheckCircle2, XCircle, Clock, Target, AlertTriangle, Loader2, Trophy, ArrowRight, Download,
 } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, ApiRequestError } from '@/lib/api';
 import { Button, EmptyState, Alert, useToast, Skeleton } from '@/components/ui';
 import { cn, formatRelative } from '@/lib/utils';
 import { Markdown } from '@/components/markdown';
@@ -50,11 +50,13 @@ export default function AssessmentsPage() {
         onFinish={async () => {
           try {
             await api.submit(assessment.assessment.id);
-            setReport(await api.report(assessment.assessment.id));
-            setPhase('report');
-          } catch (err: any) {
-            toast.push('error', err?.message ?? 'I couldn’t submit that answer. Please try again.');
+          } catch (err) {
+            // If the previous request committed but its response was lost, the
+            // report is the idempotent recovery path for a retry.
+            if (!(err instanceof ApiRequestError) || err.code !== 'ALREADY_SUBMITTED') throw err;
           }
+          setReport(await api.report(assessment.assessment.id));
+          setPhase('report');
         }}
       />
     );
@@ -189,6 +191,8 @@ function TakingView({
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [startedAt] = useState(Date.now());
   const [submitting, setSubmitting] = useState(false);
+  const finishStarted = useRef(false);
+  const timerAttempted = useRef(false);
   const timed = assessment.assessment?.mode === 'mock';
   const [remaining, setRemaining] = useState((assessment.assessment?.durationSec ?? 1800));
   const toast = useToast();
@@ -199,9 +203,37 @@ function TakingView({
     return () => clearInterval(t);
   }, [timed]);
 
+  const finish = useCallback(async () => {
+    if (finishStarted.current) return;
+    finishStarted.current = true;
+    setSubmitting(true);
+    try {
+      // Both manual and timer-triggered completion persist the same complete
+      // answer snapshot before asking the server to finalize the assessment.
+      for (const [questionId, answer] of Object.entries(answers)) {
+        if (!answer.trim()) continue;
+        try {
+          await api.answer(assessment.assessment.id, { questionId, answer });
+        } catch (err) {
+          if (err instanceof ApiRequestError && err.code === 'ALREADY_SUBMITTED') break;
+          throw err;
+        }
+      }
+      await onFinish();
+    } catch (err: any) {
+      toast.push('error', err?.message ?? 'I couldn’t submit that answer. Please try again.');
+    } finally {
+      finishStarted.current = false;
+      setSubmitting(false);
+    }
+  }, [answers, assessment.assessment.id, onFinish, toast]);
+
   useEffect(() => {
-    if (timed && remaining === 0) void onFinish();
-  }, [timed, remaining, onFinish]);
+    if (timed && remaining === 0 && !timerAttempted.current) {
+      timerAttempted.current = true;
+      void finish();
+    }
+  }, [timed, remaining, finish]);
 
   const q = questions[idx];
   if (!q) {
@@ -214,21 +246,8 @@ function TakingView({
     );
   }
 
-  const answeredCount = Object.keys(answers).length;
-
-  const submit = async () => {
-    setSubmitting(true);
-    try {
-      for (const [questionId, answer] of Object.entries(answers)) {
-        await api.answer(assessment.assessment.id, { questionId, answer });
-      }
-      await onFinish();
-    } catch (err: any) {
-      toast.push('error', err?.message ?? 'I couldn’t submit that answer. Please try again.');
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  const answeredCount = Object.values(answers).filter((answer) => answer.trim().length > 0).length;
+  const answerDisabled = submitting || (timed && remaining === 0);
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
@@ -280,6 +299,7 @@ function TakingView({
                 >
                   <input
                     type="radio"
+                    disabled={answerDisabled}
                     name={q.id}
                     value={o}
                     checked={answers[q.id] === o}
@@ -294,6 +314,7 @@ function TakingView({
 
           {q.type === 'short' && (
             <textarea
+              disabled={answerDisabled}
               value={answers[q.id] ?? ''}
               onChange={(e) => setAnswers((a) => ({ ...a, [q.id]: e.target.value }))}
               rows={4}
@@ -305,6 +326,7 @@ function TakingView({
           {q.type === 'numerical' && (
             <div className="flex items-center gap-3">
               <input
+                disabled={answerDisabled}
                 type="number"
                 value={answers[q.id] ?? ''}
                 onChange={(e) => setAnswers((a) => ({ ...a, [q.id]: e.target.value }))}
@@ -321,12 +343,12 @@ function TakingView({
         <Button variant="secondary" disabled={idx === 0} onClick={() => setIdx((i) => i - 1)}>
           Previous
         </Button>
-        {idx < questions.length - 1 ? (
+        {idx < questions.length - 1 && !(timed && remaining === 0) ? (
           <Button onClick={() => setIdx((i) => i + 1)}>
             Next <ArrowRight className="h-4 w-4" aria-hidden />
           </Button>
         ) : (
-          <Button onClick={submit} loading={submitting}>
+          <Button onClick={() => void finish()} loading={submitting}>
             Finish this quiz
           </Button>
         )}
@@ -339,13 +361,15 @@ function TakingView({
 
 function ReportView({ report, onRestart }: { report: any; onRestart: () => void }) {
   const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfError, setPdfError] = useState('');
   const exportPdf = async () => {
     setPdfBusy(true);
+    setPdfError('');
     try {
       const details = [`Score: ${Math.round((report.score ?? 0) * 100)}%`, `Correct: ${report.correct} of ${report.total}`, `Weak topics: ${(report.weakTopics ?? []).join(', ') || 'None'}`, `Topic breakdown: ${(report.topicBreakdown ?? []).map((t: any) => `${t.topicName}: ${t.correct}/${t.total}`).join('; ') || 'Not available'}`, `Likely misconceptions: ${(report.misconceptions ?? []).map((m: any) => `${m.label} (${m.count})`).join('; ') || 'None'}`].join('\n');
       const blob = await api.generatePdf({ prompt: `STUDYMIND_EXPORT:Quiz report\n${details}` });
-      const href = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = href; a.download = 'studymind-quiz-report.pdf'; a.click(); URL.revokeObjectURL(href);
-    } finally { setPdfBusy(false); }
+      const href = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = href; a.download = 'studymind-quiz-report.pdf'; document.body.appendChild(a); a.click(); a.remove(); window.setTimeout(() => URL.revokeObjectURL(href), 1000);
+    } catch (err) { setPdfError(err instanceof Error ? err.message : 'Could not create the PDF. Please retry.'); } finally { setPdfBusy(false); }
   };
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -428,6 +452,7 @@ function ReportView({ report, onRestart }: { report: any; onRestart: () => void 
         </section>
       )}
 
+      {pdfError && <Alert tone="error" title="PDF export failed">{pdfError}</Alert>}
       <div className="flex flex-wrap gap-3">
         <Button variant="secondary" onClick={() => void exportPdf()} loading={pdfBusy}>
           <Download className="h-4 w-4" aria-hidden /> Download as PDF

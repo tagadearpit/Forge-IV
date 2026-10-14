@@ -14,10 +14,20 @@ export class ApiRequestError extends Error {
 
   constructor(status: number, error: ApiError) {
     super(error.message);
+    this.name = 'ApiRequestError';
     this.status = status;
     this.code = error.code;
     this.details = error.details;
   }
+}
+
+async function errorFromResponse(res: Response, fallbackCode: string, fallbackMessage: string): Promise<ApiRequestError> {
+  const payload = await res.json().catch(() => null) as { error?: Partial<ApiError> } | null;
+  return new ApiRequestError(res.status, {
+    code: payload?.error?.code ?? fallbackCode,
+    message: payload?.error?.message ?? fallbackMessage,
+    ...(payload?.error?.details !== undefined ? { details: payload.error.details } : {}),
+  });
 }
 
 const TOKEN_KEY = 'studymind.token';
@@ -167,6 +177,7 @@ export interface TutorAnswer {
   threadId?: string;
   messageId?: string;
   attachment?: { type: 'pdf'; messageId: string; url?: string };
+  pdfClarification?: boolean;
 }
 
 export interface TopicNode {
@@ -246,17 +257,27 @@ export const api = {
 
   ask: (body: { question: string; threadId?: string; previousMessageId?: string; language?: 'en' | 'hi'; scope?: { sourceIds?: string[]; topicIds?: string[]; sectionTitle?: string } }) =>
     apiFetch<TutorAnswer>('/tutor/ask', { method: 'POST', body: JSON.stringify(body) }),
-  generatePdf: async (body: { messageId?: string; threadId?: string; prompt?: string }) => {
+  generatePdf: async (body: { messageId?: string; threadId?: string; prompt?: string }): Promise<Blob> => {
     const { url } = await apiFetch<{ url: string }>('/tutor/pdf', { method: 'POST', body: JSON.stringify(body) });
     const token = getToken();
-    const res = await fetch(`${API_URL}${url}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
-    if (!res.ok) throw new Error('Could not download the PDF report.');
+    let res: Response;
+    try {
+      res = await fetch(`${API_URL}${url}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    } catch {
+      throw new ApiRequestError(0, { code: 'PDF_DOWNLOAD_NETWORK_ERROR', message: 'The PDF was prepared, but the download connection failed. Try again.' });
+    }
+    if (!res.ok) throw await errorFromResponse(res, 'PDF_DOWNLOAD_FAILED', 'The PDF was prepared, but could not be downloaded. Try again.');
     return res.blob();
   },
   downloadPdfAttachment: async (messageId: string): Promise<Blob> => {
     const token = getToken();
-    const res = await fetch(`${API_URL}/api/tutor/pdf/messages/${encodeURIComponent(messageId)}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
-    if (!res.ok) throw new Error('Could not download the PDF attachment.');
+    let res: Response;
+    try {
+      res = await fetch(`${API_URL}/api/tutor/pdf/messages/${encodeURIComponent(messageId)}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    } catch {
+      throw new ApiRequestError(0, { code: 'PDF_ATTACHMENT_NETWORK_ERROR', message: 'Could not reach the PDF download. Check your connection and retry.' });
+    }
+    if (!res.ok) throw await errorFromResponse(res, 'PDF_ATTACHMENT_DOWNLOAD_FAILED', 'This PDF could not be downloaded. Try again.');
     return res.blob();
   },
   chatHistory: () => apiFetch<{ threads: Array<{ id: string; title: string; scope: any; lastMessageAt: string }> }>('/tutor/threads'),
