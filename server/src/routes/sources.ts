@@ -209,6 +209,43 @@ router.get(
   })
 );
 
+/* ------------------------ POST /sources/:id/reprocess ------------------ */
+
+router.post(
+  '/:id/reprocess',
+  requireAuth,
+  heavyLimiter,
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const source = await Source.findOne({ _id: req.params.id, userId: req.userId }).select('fileUrl mimeType status type').lean();
+    if (!source) throw new ApiError(404, 'SOURCE_NOT_FOUND', 'That source does not exist.');
+    if (['queued', 'extracting', 'indexing'].includes(source.status)) {
+      throw new ApiError(409, 'SOURCE_BUSY', 'This source is already being processed.');
+    }
+
+    const filePath = path.join(env.UPLOAD_DIR, path.basename(source.fileUrl));
+    if (!fs.existsSync(filePath)) {
+      throw new ApiError(404, 'FILE_MISSING', 'The original file is no longer available to reprocess.');
+    }
+
+    // Claim the current state atomically so two tabs cannot launch duplicate
+    // ingestion jobs. Existing units remain until the new extraction succeeds.
+    const queued = await Source.findOneAndUpdate(
+      { _id: source._id, userId: req.userId, status: source.status },
+      { $set: { status: 'queued', statusReason: null, embeddingStatus: 'queued', progress: 0 } },
+      { new: true }
+    ).lean();
+    if (!queued) throw new ApiError(409, 'SOURCE_BUSY', 'This source changed while reprocessing was starting.');
+
+    const sourceId = String(source._id);
+    const userId = req.userId!;
+    setImmediate(() => {
+      void ingestSource(sourceId, userId, filePath, String(source.mimeType ?? ''), { force: true })
+        .catch((err) => console.error('[ingest:reprocess]', err.message));
+    });
+    res.status(202).json({ sourceId, status: 'queued' });
+  })
+);
+
 /* ---------------------- GET /sources/:id/units/:unitId ------------------ */
 
 router.get(

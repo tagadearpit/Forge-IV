@@ -74,7 +74,7 @@ export interface GeneratedQuestion {
 
 export async function generateQuestions(
   req: GenerateRequest,
-  opts: { relaxed?: boolean; unitTopicMap?: Map<string, string> } = {}
+  opts: { relaxed?: boolean; broadened?: boolean; unitTopicMap?: Map<string, string> } = {}
 ): Promise<{
   questions: GeneratedQuestion[];
   rejected: string[];
@@ -102,11 +102,14 @@ export async function generateQuestions(
     const target = perType;
     const attempts = target * 3;
 
+    const retrievalTopicIds = opts.broadened && !req.scope?.topicIds?.length
+      ? undefined
+      : topicIds.length ? topicIds : undefined;
     const hits = await retrieveUnits(req.userId, {
-      question: `${type} question covering ${topicIds.join(' ') || 'the uploaded material'}`,
+      question: `${type} question covering ${opts.broadened ? 'the uploaded material' : topicIds.join(' ') || 'the uploaded material'}`,
       sourceIds: req.scope?.sourceIds,
-      topicIds: topicIds.length ? topicIds : undefined,
-      topK: 12,
+      topicIds: retrievalTopicIds,
+      topK: opts.broadened ? 48 : 12,
     });
 
     if (!hits.length) {
@@ -554,13 +557,28 @@ export async function createAssessment(req: GenerateRequest) {
     durationSec: req.mode === 'mock' ? req.durationSec ?? 1800 : null,
   });
 
-  // First pass is strict. If the dedupe guard has exhausted the pool (a small
-  // corpus, or a student who has already been assessed many times), retry once
-  // with a relaxed paraphrase threshold rather than failing the request outright.
+  // First pass prefers the student's adaptive topics. If that produces no
+  // verified question and the student did not explicitly pin topics, broaden
+  // retrieval across their allowed source scope before failing. Verification
+  // and dedupe remain mandatory on every pass.
   let pass = await generateQuestions(req, { unitTopicMap });
   let relaxed = false;
+  let broadened = false;
+  let attemptedBroaderFallback = false;
 
-  if (pass.questions.length < (req.count ?? 10) && req.count && req.count > 1) {
+  if (!pass.questions.length && !req.scope?.topicIds?.length) {
+    attemptedBroaderFallback = true;
+    const fallback = await generateQuestions(req, { relaxed: true, broadened: true, unitTopicMap });
+    if (fallback.questions.length) {
+      pass = fallback;
+      relaxed = true;
+      broadened = true;
+    } else {
+      pass = { ...pass, rejected: [...pass.rejected, ...fallback.rejected] };
+    }
+  }
+
+  if (!attemptedBroaderFallback && pass.questions.length < (req.count ?? 10) && req.count && req.count > 1) {
     const retry = await generateQuestions(req, { relaxed: true, unitTopicMap });
     const seen = new Set(pass.questions.map((q) => q.fingerprint));
     const extra = retry.questions.filter((q) => !seen.has(q.fingerprint));

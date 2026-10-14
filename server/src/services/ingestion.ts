@@ -194,9 +194,10 @@ export async function ingestSource(
     const embeddingDim = embeddingReady ? first!.length : null;
     console.log(`[ingest] ${chunked.length} units -> ${embeddingReady ? `${embeddingProvider}/${embeddingModel}/${embeddingDim}-dim` : `embedding pending${embedResult.retryable ? ' (will retry)' : ' (permanent 4xx; automatic retries stopped)'}`}`);
 
-    // Only mutate units while the owner-scoped source remains live.
+    // Only mutate units while the owner-scoped source remains live. Insert the
+    // complete replacement batch before removing the previous units: a failed
+    // write must not leave a reprocessed source with no usable content.
     await assertSourceActive();
-    await Unit.deleteMany({ sourceId: source._id, userId });
 
     const unitDocs = chunked.map((c, i) => ({
       sourceId: source._id,
@@ -217,6 +218,7 @@ export async function ingestSource(
     const inserted = await Unit.insertMany(unitDocs, { ordered: false });
     insertedUnitIds = inserted.map((unit) => unit._id);
     await assertSourceActive();
+
     const unitsCreated = inserted.length;
 
     /* ---------------------- 4. TOPICS ---------------------- */
@@ -229,6 +231,7 @@ export async function ingestSource(
       unitFailures++;
       console.warn('[ingest] topic extraction failed', (err as Error).message);
     }
+
 
     /* ---------------------- 5. READY ---------------------- */
     const topicIds = await Unit.distinct('topicIds', { sourceId: source._id, userId });
@@ -249,6 +252,42 @@ export async function ingestSource(
       topicIds,
     } });
     if (!ready.matchedCount) throw new SourceCancelledError();
+
+    // Only remove old content after the replacement is fully marked ready. If
+    // the final source update fails, the failure path can clean up the new
+    // units while leaving the previous set available.
+    try {
+      // Swap out old units only after the new extraction, embedding, and topic
+      // pass have succeeded (or topic extraction has been safely skipped).
+      await assertSourceActive();
+      const staleUnits = await Unit.find({
+        sourceId: source._id,
+        userId,
+        _id: { $nin: insertedUnitIds },
+      }).select('_id').lean();
+      const staleUnitIds = staleUnits.map((unit: any) => unit._id);
+      if (staleUnitIds.length) {
+        await Unit.deleteMany({ _id: { $in: staleUnitIds }, sourceId: source._id, userId });
+        const staleTopics = await Topic.find({ userId, sourceUnitIds: { $in: staleUnitIds } }).select('_id').lean();
+        const staleTopicIds = staleTopics.map((topic: any) => topic._id);
+        if (staleTopicIds.length) {
+          await Topic.updateMany(
+            { _id: { $in: staleTopicIds }, userId },
+            { $pull: { sourceUnitIds: { $in: staleUnitIds } } }
+          );
+          await Topic.deleteMany({ _id: { $in: staleTopicIds }, userId, sourceUnitIds: { $size: 0 } });
+        }
+      }
+      const remainingTopicIds = await Unit.distinct('topicIds', { sourceId: source._id, userId });
+      await Source.updateOne(
+        { _id: source._id, userId, status: 'ready' },
+        { $set: { topicIds: remainingTopicIds } }
+      );
+    } catch (cleanupError) {
+      // Keeping both generations is safer than failing ingestion or deleting
+      // the replacement after it has already become available.
+      console.warn('[ingest] old-unit cleanup deferred', (cleanupError as Error).message);
+    }
     if (!embeddingReady && embedResult.retryable) scheduleReembedding(sourceId, userId, 0, 2_000);
 
     await logEvent(userId, 'source_ready', null, null, 'ingestion', { sourceId: String(source._id) });

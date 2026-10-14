@@ -53,14 +53,21 @@ export async function extractPdf(filePath: string): Promise<{ units: RawUnit[]; 
   const pages = await perPageText(buf);
   const units: RawUnit[] = [];
 
-  if (pages.length) {
-    pages.forEach((text, i) => {
-      const clean = text.trim();
-      if (clean) units.push({ kind: 'text', text: clean, location: { page: i + 1 } });
+  const cleanPages = pages.map(normalizePdfText);
+  if (cleanPages.some(Boolean)) {
+    cleanPages.forEach((text, i) => {
+      if (text) units.push({ kind: 'text', text, location: { page: i + 1 } });
     });
   } else if (parsed.text?.trim()) {
-    // Fallback: whole-document text attributed to page 1.
-    units.push({ kind: 'text', text: parsed.text.trim(), location: { page: 1 } });
+    // Geometry can fail for unusual fonts even when pdf-parse's default text
+    // layer succeeds. Keep that readable fallback instead of discarding it.
+    const fallbackPages = parsed.text.split('\f').map(normalizePdfText).filter(Boolean);
+    if (fallbackPages.length > 1) {
+      fallbackPages.forEach((text, i) => units.push({ kind: 'text', text, location: { page: i + 1 } }));
+    } else {
+      // Fallback: whole-document text attributed to page 1.
+      units.push({ kind: 'text', text: fallbackPages[0] ?? normalizePdfText(parsed.text), location: { page: 1 } });
+    }
   }
 
   if (!units.length) {
@@ -82,32 +89,67 @@ export async function extractPdf(filePath: string): Promise<{ units: RawUnit[]; 
  * pdf-parse does not populate it, so the entire page would otherwise arrive as
  * one enormous line and all section headings would be lost.
  */
-function reconstructLines(items: any[]): string {
-  const rows = new Map<number, Array<{ x: number; str: string }>>();
+export function reconstructLines(items: any[]): string {
+  type Run = { x: number; width: number; height: number; str: string };
+  const rows = new Map<number, Run[]>();
 
   for (const item of items) {
-    if (typeof item?.str !== 'string' || !item.str) continue;
+    if (typeof item?.str !== 'string' || !item.str.trim()) continue;
     const t = item.transform;
     if (!Array.isArray(t) || t.length < 6) continue;
     // Round the baseline so sub-pixel jitter does not split one line in two.
-    const y = Math.round(t[5] as number);
-    const x = (t[4] as number) ?? 0;
+    const y = Math.round(Number(t[5]));
+    const x = Number(t[4]) || 0;
+    const width = Number.isFinite(Number(item.width)) ? Math.max(0, Number(item.width)) : 0;
+    const transformedHeight = Math.hypot(Number(t[2]) || 0, Number(t[3]) || 0);
+    const height = Math.max(1, Math.abs(Number(item.height) || transformedHeight || 10));
     const row = rows.get(y) ?? [];
-    row.push({ x, str: item.str });
+    row.push({ x, width, height, str: item.str.trim() });
     rows.set(y, row);
   }
 
-  // Descending Y = top to bottom on the page.
+  // Descending Y = top to bottom on the page. Join by glyph geometry rather
+  // than blindly inserting a space between every PDF.js text item: many PDFs
+  // encode tracked headings one character at a time, which used to render as
+  // "Q U A N T U M" and poison retrieval/question generation.
   const ordered = [...rows.entries()].sort((a, b) => b[0] - a[0]);
-  return ordered
-    .map(([, runs]) =>
-      runs
-        .sort((a, b) => a.x - b.x)
-        .map((r) => r.str.trim())
-        .filter(Boolean)
-        .join(' ')
-    )
-    .join('\n');
+  return ordered.map(([, runs]) => {
+    const sorted = runs.sort((a, b) => a.x - b.x);
+    let line = '';
+    let previous: Run | null = null;
+    for (const run of sorted) {
+      if (!run.str) continue;
+      if (!previous) {
+        line = run.str;
+        previous = run;
+        continue;
+      }
+      const fontHeight = Math.max(previous.height, run.height);
+      const estimatedAdvance = previous.width > 0
+        ? previous.width
+        : previous.height * 0.55 * Math.max(1, [...previous.str].length);
+      const gap = run.x - (previous.x + estimatedAdvance);
+      const wordGap = Math.max(1, fontHeight * 0.2);
+      const punctuation = /^[,.;:!?%)\]}»]/.test(run.str);
+      const opensGroup = /[(\[{«]$/.test(previous.str);
+      const separated = gap > wordGap;
+      line += separated && !punctuation && !opensGroup ? ` ${run.str}` : run.str;
+      previous = run;
+    }
+    return normalizePdfText(line);
+  }).filter(Boolean).join('\n');
+}
+
+function normalizePdfText(value: string): string {
+  return (value ?? '')
+    .normalize('NFKC')
+    .replace(/[\u0000\u200b\ufeff]/g, '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 async function perPageText(buf: Buffer): Promise<string[]> {

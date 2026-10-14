@@ -5,6 +5,7 @@ import path from 'node:path';
 import PDFDocument from 'pdfkit';
 import pdfParse from 'pdf-parse';
 import { signPdfDownloadToken, validatePdfDownloadToken } from '../services/pdfSecurity.js';
+import { reconstructLines } from '../services/extractors.js';
 
 const fonts = path.resolve(process.cwd(), 'assets/fonts');
 
@@ -29,6 +30,48 @@ test('Noto font PDF parses with multiple numbered pages and Hindi glyph text', a
   assert.equal(parsed.numpages, 2);
   assert.match(parsed.text, /StudyMind PDF page one/);
   assert.match(parsed.text, /नमस्ते/);
+});
+
+test('PDF text reconstruction joins tracked characters but preserves word boundaries', () => {
+  const content = 'QUANTUM COMPUTING: STATE OF THE ART';
+  const items: Array<{ str: string; transform: number[]; width: number; height: number }> = [];
+  let x = 0;
+  for (const character of content) {
+    if (character === ' ') {
+      x += 3;
+      continue;
+    }
+    items.push({ str: character, transform: [1, 0, 0, 10, x, 100], width: 5, height: 10 });
+    x += 5;
+  }
+  assert.equal(reconstructLines(items), content);
+});
+
+test('PDF text reconstruction handles missing widths, punctuation, line breaks, and Hindi', () => {
+  const content = 'Quantum: state of the art.\nक्वांटम कंप्यूटिंग';
+  const lines = [
+    'Quantum: state of the art.',
+    'क्वांटम कंप्यूटिंग',
+  ];
+  const items: Array<{ str: string; transform: number[]; width?: number; height: number }> = [];
+  for (const [lineIndex, line] of lines.entries()) {
+    let x = 0;
+    for (const character of line) {
+      if (character === ' ') {
+        x += 3;
+        continue;
+      }
+      items.push({
+        str: character,
+        transform: [1, 0, 0, 10, x, 100 - lineIndex * 14],
+        // pdf.js may omit or report zero width for individual glyph runs.
+        width: lineIndex === 0 ? (items.length % 2 === 0 ? 0 : undefined) : 5,
+        height: 10,
+      });
+      x += 5;
+    }
+  }
+  assert.equal(reconstructLines(items), content);
 });
 
 test('signed PDF download token rejects expired, forged, and wrong-user tokens', () => {

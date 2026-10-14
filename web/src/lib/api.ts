@@ -225,6 +225,7 @@ export const api = {
   sources: () => apiFetch<{ sources: SourceSummary[] }>('/sources'),
   source: (id: string) => apiFetch<any>(`/sources/${id}`),
   deleteSource: (id: string) => apiFetch<void>(`/sources/${id}`, { method: 'DELETE' }),
+  reprocessSource: (id: string) => apiFetch<{ sourceId: string; status: string }>(`/sources/${id}/reprocess`, { method: 'POST' }),
   /**
    * Exchanges the login JWT for a 5-minute, single-source file token and returns
    * a ready-to-use URL. Media elements cannot send an Authorization header, so

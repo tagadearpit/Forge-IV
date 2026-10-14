@@ -2,6 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
+import { assertPersistentDatabaseConfig } from '../db/connect.js';
 
 /**
  * FIX 10.1 — production must refuse weak JWT secrets.
@@ -54,5 +55,16 @@ describe('production JWT secret hardening', () => {
   test('development tolerates the default (tests and local runs must still work)', () => {
     const r = boot('dev-only-insecure-secret-change-me', 'development');
     assert.equal(r.ok, true);
+  });
+});
+
+describe('production database persistence', () => {
+  test('refuses in-memory storage in production', () => {
+    assert.throws(() => assertPersistentDatabaseConfig(true, ''), /MONGODB_URI is required in production/);
+  });
+
+  test('keeps the in-memory database available for local development', () => {
+    assert.doesNotThrow(() => assertPersistentDatabaseConfig(false, ''));
+    assert.doesNotThrow(() => assertPersistentDatabaseConfig(true, 'mongodb+srv://database.example/studymind'));
   });
 });

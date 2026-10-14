@@ -10,11 +10,20 @@ import { env } from '../config/env.js';
  */
 let memoryServer: { stop: () => Promise<boolean> } | null = null;
 
+export function assertPersistentDatabaseConfig(isProduction: boolean, mongoUri: string): void {
+  if (isProduction && !mongoUri.trim()) {
+    throw new Error(
+      'MONGODB_URI is required in production. Refusing to use in-memory storage because accounts and study data would be lost on restart.'
+    );
+  }
+}
+
 export async function connectDb(): Promise<{
   mode: 'atlas' | 'memory';
   uri: string;
 }> {
   mongoose.set('strictQuery', true);
+  assertPersistentDatabaseConfig(env.isProd, env.MONGODB_URI);
 
   if (env.MONGODB_URI) {
     await mongoose.connect(env.MONGODB_URI, {

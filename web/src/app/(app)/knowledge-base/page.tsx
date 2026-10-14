@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Upload, FileText, Presentation, Image as ImageIcon, Video, Music, File,
-  Trash2, Loader2, Clock, FolderTree, AlertTriangle,
+  Trash2, Loader2, Clock, FolderTree, AlertTriangle, RefreshCw,
 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api, type SourceSummary } from '@/lib/api';
@@ -39,6 +39,7 @@ function KnowledgeBaseInner() {
   const [tab, setTab] = useState<'units' | 'topics'>('units');
   const [activeUnitId, setActiveUnitId] = useState<string | null>(null);
   const [seekSec, setSeekSec] = useState<number | null>(null);
+  const [reprocessing, setReprocessing] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
   const router = useRouter();
@@ -78,6 +79,20 @@ function KnowledgeBaseInner() {
     const t = setInterval(load, 3000);
     return () => clearInterval(t);
   }, [sources, load]);
+
+  useEffect(() => {
+    const status = detail?.source?.status;
+    if (!selected || !['queued', 'extracting', 'indexing'].includes(status)) return;
+    let active = true;
+    const timer = setInterval(() => {
+      api.source(selected).then((fresh) => {
+        if (!active) return;
+        setDetail(fresh);
+        if (!['queued', 'extracting', 'indexing'].includes(fresh.source?.status)) void load();
+      }).catch(() => {});
+    }, 3000);
+    return () => { active = false; clearInterval(timer); };
+  }, [detail?.source?.status, selected, load]);
 
   const upload = async (file: File) => {
     const form = new FormData();
@@ -134,6 +149,23 @@ function KnowledgeBaseInner() {
       load();
     } catch (err: any) {
       toast.push('error', err?.message ?? 'Delete failed.');
+    }
+  };
+
+  const reprocess = async () => {
+    if (!detail || reprocessing) return;
+    const { id, title } = detail.source;
+    if (!confirm(`Rebuild the extracted content for "${title}"? Its current units stay available until the replacement content is ready.`)) return;
+    setReprocessing(true);
+    try {
+      await api.reprocessSource(id);
+      setDetail((current: any) => current ? { ...current, source: { ...current.source, status: 'queued' } } : current);
+      toast.push('success', 'Reprocessing started. The content units will refresh when it finishes.');
+      void load();
+    } catch (err: any) {
+      toast.push('error', err?.message ?? 'Could not reprocess this source.');
+    } finally {
+      setReprocessing(false);
     }
   };
 
@@ -300,17 +332,24 @@ function KnowledgeBaseInner() {
       {/* Source viewer */}
       {detail && (
         <div className="card overflow-hidden">
-          <div className="flex items-center justify-between border-b border-[color:rgb(var(--border))] px-5 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:rgb(var(--border))] px-5 py-4">
             <div>
               <h2 className="font-semibold">{detail.source.title}</h2>
               <p className="text-xs text-muted">
                 {detail.source.pageCount ? `${detail.source.pageCount} pages · ` : ''}
                 {detail.units.length} units · {detail.topics.length} topics
+                {['queued', 'extracting', 'indexing'].includes(detail.source.status) ? ` · ${detail.source.status}` : ''}
               </p>
             </div>
-            <Button variant="secondary" onClick={() => { setDetail(null); setSelected(null); }}>
-              Close
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="secondary" onClick={() => void reprocess()} disabled={reprocessing || ['queued', 'extracting', 'indexing'].includes(detail.source.status)}>
+                {reprocessing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <RefreshCw className="h-4 w-4" aria-hidden />}
+                {reprocessing ? 'Starting…' : 'Reprocess'}
+              </Button>
+              <Button variant="secondary" onClick={() => { setDetail(null); setSelected(null); }}>
+                Close
+              </Button>
+            </div>
           </div>
 
           <div className="grid gap-0 lg:grid-cols-2">
